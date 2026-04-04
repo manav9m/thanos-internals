@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compactor Lab - Thanos Internals</title>
+    <link rel="stylesheet" href="../css/styles.css">
+    <style>
+        /* Compactor Specific Styles */
+        .simulation-canvas {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: #111;
+            padding: 20px;
+        }
+
+        .storage-bucket {
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            min-height: 200px;
+            position: relative;
+        }
+
+        .storage-label {
+            position: absolute;
+            top: -10px;
+            left: 10px;
+            background: var(--bg-secondary);
+            padding: 0 5px;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .block-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .ts-block {
+            background-color: var(--highlight-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 10px;
+            text-align: center;
+            width: 80px;
+            position: relative;
+            transition: all 0.5s ease;
+        }
+
+        .ts-block.res-raw { border-left: 3px solid var(--primary-color); }
+        .ts-block.res-5m { border-left: 3px solid var(--warning-color); }
+        .ts-block.res-1h { border-left: 3px solid var(--danger-color); }
+
+        .ts-block.compacting {
+            border-color: var(--success-color);
+            box-shadow: 0 0 10px rgba(46, 160, 67, 0.5);
+            transform: scale(1.05);
+        }
+
+        .ts-block .size { font-size: 0.7rem; color: var(--text-muted); }
+        .ts-block .res { font-size: 0.7rem; font-weight: bold; }
+
+        .compactor-engine {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            padding: 15px;
+            text-align: center;
+            margin: 20px 0;
+            border-radius: 6px;
+            position: relative;
+        }
+
+        .compactor-engine::before, .compactor-engine::after {
+            content: '↓';
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.5rem;
+            color: var(--border-color);
+        }
+        .compactor-engine::before { top: -30px; }
+        .compactor-engine::after { bottom: -30px; }
+
+        .log-panel {
+            background: #000;
+            color: #0f0;
+            font-family: monospace;
+            padding: 10px;
+            height: 150px;
+            overflow-y: auto;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <h1><a href="../index.html" style="color: inherit; text-decoration: none;">Thanos Internals Lab</a></h1>
+            <span class="subtitle">Module: Compactor</span>
+        </div>
+        <div class="progress-tracker">
+            <button id="mark-complete-btn" class="primary">Mark Lab Complete</button>
+        </div>
+    </header>
+
+    <main style="padding: 1rem;">
+        <div class="lab-container">
+            <!-- Narrative / Docs Pane -->
+            <div class="lab-sidebar">
+                <h2>Thanos Compactor</h2>
+                <p>The Compactor applies the block compaction procedure of Prometheus' local TSDB to object storage. It is responsible for:</p>
+                <ul>
+                    <li><strong>Compaction:</strong> Merging multiple small blocks (e.g., 2h) into larger ones (e.g., 8h, 2d, 14d) to improve query performance and reduce index size.</li>
+                    <li><strong>Downsampling:</strong> Creating 5m and 1h resolution blocks from raw data to speed up long-range queries.</li>
+                    <li><strong>Retention:</strong> Deleting blocks once they exceed configured retention policies.</li>
+                </ul>
+
+                <h3>Deep Internal Working</h3>
+                <p>Compaction operates on groups of blocks. By default, it groups by a <code>resolution</code> and specific <code>external labels</code>. It requires a singleton instance per bucket to avoid race conditions.</p>
+                <p>The merging process reads the chunks and index of overlapping blocks, deduplicates series, and writes a new <code>meta.json</code> along with the combined data.</p>
+                <p><em>Not documented officially: Exact internal memory footprints during compaction spikes, though it's known to be memory intensive.</em></p>
+
+                <h3>Configuration Playground</h3>
+                <p>Use the controls on the right to simulate Thanos Compactor arguments.</p>
+                <ul>
+                    <li><code>--wait</code>: Run continuously. Without this, the compactor runs once and exits.</li>
+                    <li><code>--downsampling.disable</code>: Skips creating 5m and 1h blocks.</li>
+                    <li><code>--retention.resolution-raw</code>: How long to keep raw (0s) blocks.</li>
+                </ul>
+
+                <h3>Scenario Exercises</h3>
+                <ul>
+                    <li><strong>Scenario 1:</strong> Generate 4 raw (2h) blocks. Run a compaction cycle. Observe them merge into an 8h block.</li>
+                    <li><strong>Scenario 2:</strong> Trigger downsampling. Watch the 8h raw block generate a 5m resolution equivalent.</li>
+                </ul>
+
+                <h3>Failure Modes</h3>
+                <ul>
+                    <li><strong>Halted Compaction:</strong> If the compactor encounters malformed blocks, it halts and produces a <code>compaction.err.json</code> file to avoid corrupting data.</li>
+                    <li><strong>Concurrency Issues:</strong> Running multiple compactors on the same bucket leads to overlapping blocks and query failures. Always use a single compactor.</li>
+                    <li><strong>OOM (Out of Memory):</strong> Compacting very large blocks requires significant memory. Watch your metrics!</li>
+                </ul>
+
+                <h3>References</h3>
+                <ul>
+                    <li><a href="https://thanos.io/tip/components/compact.md/" target="_blank">Thanos Compactor Docs</a></li>
+                </ul>
+            </div>
+
+            <!-- Interactive Simulation Pane -->
+            <div class="lab-main">
+                <div class="simulation-panel">
+                    <div class="simulation-header">
+                        <strong>Visual Simulation: Storage & Compaction</strong>
+                    </div>
+                    <div class="simulation-canvas">
+
+                        <div class="storage-bucket">
+                            <span class="storage-label">Object Storage Bucket (Raw Blocks)</span>
+                            <div id="raw-blocks" class="block-container"></div>
+                        </div>
+
+                        <div class="compactor-engine" id="compactor-engine">
+                            <strong>Compactor Engine</strong>
+                            <div id="compactor-status" style="font-size: 0.8rem; color: var(--text-muted);">Idle</div>
+                        </div>
+
+                        <div class="storage-bucket">
+                            <span class="storage-label">Object Storage Bucket (Downsampled Blocks)</span>
+                            <div id="downsampled-blocks" class="block-container"></div>
+                        </div>
+
+                    </div>
+                    <div class="log-panel" id="log-panel">
+                        <div>level=info msg="Compactor simulator ready"</div>
+                    </div>
+                </div>
+
+                <!-- Controls -->
+                <div class="controls-panel">
+                    <h3 style="margin-top:0;">Controls & Flags</h3>
+
+                    <div class="form-group">
+                        <button id="btn-generate" class="mb-1">Ingest: Generate 2h Raw Block</button>
+                    </div>
+
+                    <hr class="mb-1" style="border-color: var(--border-color);">
+
+                    <div id="advanced-controls" style="opacity: 0.5; pointer-events: none; position: relative;">
+                        <div id="advanced-lock-msg" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(33, 38, 45, 0.8); display: flex; align-items: center; justify-content: center; z-index: 10; font-size: 0.9rem; color: var(--warning-color); border-radius: 4px; border: 1px solid var(--warning-color); font-weight: bold; text-align: center; padding: 10px;">
+                            Complete TSDB Internals & Object Storage Labs to unlock Advanced Controls.
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="flag-downsampling" checked>
+                                Enable Downsampling
+                            </label>
+                            <span class="help-text">If disabled, acts like `--downsampling.disable`</span>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Retention Raw (simulated hours)</label>
+                            <select id="flag-retention-raw">
+                                <option value="0">0 (Disable)</option>
+                                <option value="24">24h</option>
+                                <option value="48">48h</option>
+                            </select>
+                            <span class="help-text">`--retention.resolution-raw`</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group mt-1 flex gap-1">
+                        <button id="btn-compact" class="primary">Run Compaction Cycle</button>
+                        <button id="btn-reset">Reset Bucket</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="../js/app.js"></script>
+    <script src="../js/modules/compactor-sim.js"></script>
+</body>
+</html>

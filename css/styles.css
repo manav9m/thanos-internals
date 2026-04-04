@@ -1,0 +1,313 @@
+:root {
+    --bg-color: #0d1117;
+    --bg-secondary: #161b22;
+    --border-color: #30363d;
+    --text-main: #c9d1d9;
+    --text-muted: #8b949e;
+    --primary-color: #58a6ff;
+    --success-color: #2ea043;
+    --warning-color: #d29922;
+    --danger-color: #f85149;
+    --panel-bg: #21262d;
+    --highlight-bg: #1f2428;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    line-height: 1.6;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* Header */
+header {
+    background-color: var(--bg-secondary);
+    padding: 1rem 2rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.subtitle {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.progress-tracker {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+#completion-text {
+    font-size: 0.85rem;
+    margin-bottom: 0.25rem;
+}
+
+.progress-bar-container {
+    width: 150px;
+    height: 8px;
+    background-color: var(--border-color);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    background-color: var(--success-color);
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+/* Main Content */
+main {
+    flex: 1;
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.intro {
+    margin-bottom: 2rem;
+    background-color: var(--bg-secondary);
+    padding: 1.5rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+}
+
+.intro h2 {
+    margin-bottom: 0.5rem;
+}
+
+/* Lab Grid */
+.lab-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.lab-card {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 1.5rem;
+    transition: transform 0.2s, border-color 0.2s;
+    display: flex;
+    flex-direction: column;
+}
+
+.lab-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary-color);
+}
+
+.lab-card h3 {
+    margin-bottom: 0.5rem;
+    font-size: 1.25rem;
+}
+
+.lab-card p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    flex: 1;
+}
+
+.lab-card .status {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+}
+
+.status.pending {
+    background-color: var(--border-color);
+    color: var(--text-muted);
+}
+
+.status.completed {
+    background-color: rgba(46, 160, 67, 0.2);
+    color: var(--success-color);
+    border: 1px solid var(--success-color);
+}
+
+.lab-card .btn {
+    display: block;
+    text-align: center;
+    background-color: var(--panel-bg);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-weight: 600;
+    transition: background-color 0.2s;
+}
+
+.lab-card .btn:hover {
+    background-color: var(--border-color);
+    text-decoration: none;
+}
+
+.lab-card.completed .btn {
+    background-color: rgba(46, 160, 67, 0.1);
+    border-color: var(--success-color);
+    color: var(--success-color);
+}
+
+/* Lab Layout */
+.lab-container {
+    display: flex;
+    gap: 2rem;
+    height: calc(100vh - 150px);
+}
+
+.lab-sidebar {
+    flex: 1;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 1.5rem;
+    overflow-y: auto;
+}
+
+.lab-main {
+    flex: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.simulation-panel {
+    flex: 2;
+    background-color: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.simulation-header {
+    padding: 1rem;
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.simulation-canvas {
+    flex: 1;
+    position: relative;
+    padding: 1rem;
+    /* CSS Grid or Flex for SVG canvas */
+}
+
+.controls-panel {
+    flex: 1;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 1.5rem;
+    overflow-y: auto;
+}
+
+/* Typography in Lab Sidebar */
+.lab-sidebar h2 { font-size: 1.5rem; margin-bottom: 1rem; color: var(--primary-color); }
+.lab-sidebar h3 { font-size: 1.2rem; margin-top: 1.5rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem; }
+.lab-sidebar p { margin-bottom: 1rem; font-size: 0.95rem; }
+.lab-sidebar ul { margin-left: 1.5rem; margin-bottom: 1rem; font-size: 0.95rem; }
+.lab-sidebar li { margin-bottom: 0.25rem; }
+.lab-sidebar code { background-color: rgba(110, 118, 129, 0.4); padding: 0.1rem 0.3rem; border-radius: 3px; font-family: monospace; font-size: 0.85em; }
+
+/* Form Controls */
+.form-group {
+    margin-bottom: 1rem;
+}
+.form-group label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+.form-group .help-text {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    display: block;
+}
+select, input[type="text"], input[type="number"] {
+    width: 100%;
+    padding: 0.5rem;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    border-radius: 4px;
+}
+button {
+    background-color: var(--panel-bg);
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+}
+button:hover {
+    background-color: var(--border-color);
+}
+button.primary {
+    background-color: var(--primary-color);
+    color: #fff;
+    border-color: var(--primary-color);
+}
+button.primary:hover {
+    background-color: #3b82f6;
+}
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Utils */
+.mb-1 { margin-bottom: 1rem; }
+.mt-1 { margin-top: 1rem; }
+.flex { display: flex; }
+.gap-1 { gap: 1rem; }
+
+footer {
+    text-align: center;
+    padding: 1.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border-color);
+    margin-top: auto;
+}
