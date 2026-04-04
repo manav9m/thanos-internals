@@ -193,24 +193,6 @@ document.addEventListener('DOMContentLoaded', () => {
         renderBlocks();
     });
 
-    // --- Unlock Advanced Controls Logic ---
-    function checkPrerequisites() {
-        if (window.ThanosApp &&
-            window.ThanosApp.state.isCompleted('tsdb') &&
-            window.ThanosApp.state.isCompleted('object-storage')) {
-            const advContainer = document.getElementById('advanced-controls');
-            if (advContainer) {
-                advContainer.style.opacity = '1';
-                advContainer.style.pointerEvents = 'auto';
-                const lockMsg = document.getElementById('advanced-lock-msg');
-                if (lockMsg) lockMsg.style.display = 'none';
-            }
-        }
-    }
-
-    // Run check initially
-    checkPrerequisites();
-
     // Initial render
     renderBlocks();
 });
