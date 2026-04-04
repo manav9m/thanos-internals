@@ -133,11 +133,39 @@
                     <li><code>--retention.resolution-raw</code>: How long to keep raw (0s) blocks.</li>
                 </ul>
 
-                <h3>Scenario Exercises</h3>
-                <ul>
-                    <li><strong>Scenario 1:</strong> Generate 4 raw (2h) blocks. Run a compaction cycle. Observe them merge into an 8h block.</li>
-                    <li><strong>Scenario 2:</strong> Trigger downsampling. Watch the 8h raw block generate a 5m resolution equivalent.</li>
-                </ul>
+                <h3>Guided Examples</h3>
+
+                <div class="example-box">
+                    <h4>Example 1: Basic Compaction</h4>
+                    <p><strong>Goal:</strong> See how Thanos groups small blocks to reduce overhead.</p>
+                    <ol>
+                        <li>Click <strong>"Ingest: Generate 2h Raw Block"</strong> exactly 4 times. You will see four 2h blocks appear in the bucket.</li>
+                        <li>Click <strong>"Run Compaction Cycle"</strong>.</li>
+                        <li><strong>Observation:</strong> The engine scans the bucket, identifies the four overlapping 2h blocks, and merges them into a single, more efficient 8h block. This reduces index size and speeds up queries.</li>
+                    </ol>
+                </div>
+
+                <div class="example-box">
+                    <h4>Example 2: Downsampling in Action</h4>
+                    <p><strong>Goal:</strong> Understand how long-term data queries are accelerated.</p>
+                    <ol>
+                        <li>Ensure you have at least one 8h block (complete Example 1).</li>
+                        <li>Ensure <strong>"Enable Downsampling"</strong> is checked.</li>
+                        <li>Click <strong>"Run Compaction Cycle"</strong> again.</li>
+                        <li><strong>Observation:</strong> The compactor processes the 8h block and generates a secondary block with 5m resolution. Queries covering a month of data will now use this smaller, less granular block instead of parsing millions of raw data points.</li>
+                    </ol>
+                </div>
+
+                <div class="example-box">
+                    <h4>Example 3: Data Retention Limits</h4>
+                    <p><strong>Goal:</strong> Observe how Thanos deletes old data.</p>
+                    <ol>
+                        <li>Set <strong>"Retention Raw"</strong> to <code>24h</code>.</li>
+                        <li>Click <strong>"Ingest"</strong> several times. In this simulation, each ingestion advances time by 2 hours.</li>
+                        <li>Click <strong>"Run Compaction Cycle"</strong>.</li>
+                        <li><strong>Observation:</strong> The compactor checks block timestamps. Any raw block older than 24h will be purged, saving storage costs.</li>
+                    </ol>
+                </div>
 
                 <h3>Failure Modes</h3>
                 <ul>

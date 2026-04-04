@@ -240,6 +240,23 @@ main {
     overflow-y: auto;
 }
 
+/* Example Box in Lab Sidebar */
+.example-box {
+    background-color: var(--highlight-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+.example-box h4 {
+    margin-bottom: 0.5rem;
+    color: var(--primary-color);
+}
+.example-box ol {
+    margin-left: 1.5rem;
+    font-size: 0.95rem;
+}
+
 /* Typography in Lab Sidebar */
 .lab-sidebar h2 { font-size: 1.5rem; margin-bottom: 1rem; color: var(--primary-color); }
 .lab-sidebar h3 { font-size: 1.2rem; margin-top: 1.5rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.25rem; }
@@ -310,4 +327,46 @@ footer {
     color: var(--text-muted);
     border-top: 1px solid var(--border-color);
     margin-top: auto;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .progress-tracker {
+        align-items: flex-start;
+        width: 100%;
+    }
+
+    .progress-bar-container {
+        width: 100%;
+    }
+
+    .lab-container {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .lab-sidebar {
+        flex: none;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .lab-main {
+        flex: none;
+    }
+
+    .simulation-panel {
+        flex: none;
+        min-height: 400px;
+    }
+
+    .controls-panel {
+        flex: none;
+    }
 }
