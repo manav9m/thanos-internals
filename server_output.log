@@ -1,0 +1,4 @@
+127.0.0.1 - - [04/Apr/2026 20:27:42] "GET /labs/sidecar.html HTTP/1.1" 200 -
+127.0.0.1 - - [04/Apr/2026 20:27:42] "GET /js/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [04/Apr/2026 20:27:42] "GET /js/modules/sidecar-sim.js HTTP/1.1" 200 -
+127.0.0.1 - - [04/Apr/2026 20:27:42] "GET /css/styles.css HTTP/1.1" 200 -

@@ -3,14 +3,187 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Template - Thanos Internals</title>
+    <title>Sidecar Internals Lab - Thanos Internals</title>
     <link rel="stylesheet" href="../css/styles.css">
+    <style>
+        .simulation-canvas {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background: #111;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .region-container {
+            display: flex;
+            gap: 15px;
+            width: 100%;
+        }
+
+        .sidecar-region {
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 20px 15px 15px 15px;
+            position: relative;
+            background: rgba(0,0,0,0.2);
+            min-height: 120px;
+            flex: 1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .region-label {
+            position: absolute;
+            top: -12px;
+            left: 10px;
+            background: var(--bg-secondary);
+            padding: 0 5px;
+            color: var(--primary-color);
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+
+        /* Persistent Block */
+        .tsdb-block {
+            background-color: var(--highlight-bg);
+            border: 2px solid var(--success-color);
+            border-radius: 6px;
+            padding: 10px;
+            text-align: center;
+            width: 80px;
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            transition: all 0.5s ease;
+        }
+
+        .tsdb-block.uploading {
+            border-color: var(--warning-color);
+            animation: pulseUpload 1s infinite alternate;
+        }
+
+        .tsdb-block.uploaded {
+            border-color: var(--text-muted);
+            opacity: 0.6;
+        }
+
+        .tsdb-block .size { font-size: 0.7rem; color: var(--text-muted); }
+        .tsdb-block .status { font-size: 0.65rem; color: var(--warning-color); margin-top: 4px; display: none; }
+        .tsdb-block.uploading .status { display: block; }
+
+        /* Store API Query indicator */
+        .query-indicator {
+            position: absolute;
+            right: 10px;
+            top: -10px;
+            background: var(--accent-color);
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+        }
+
+        .query-indicator.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Object Storage Block */
+        .obj-block {
+            background-color: #2c3e50;
+            border: 2px solid var(--accent-color);
+            border-radius: 6px;
+            padding: 10px;
+            text-align: center;
+            width: 80px;
+            animation: dropIn 0.5s ease-out;
+        }
+
+        .obj-block .size { font-size: 0.7rem; color: #cbd5e1; }
+
+        @keyframes popIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes dropIn {
+            0% { transform: translateY(-20px); opacity: 0; }
+            100% { transform: translateY(0); opacity: 1; }
+        }
+
+        @keyframes pulseUpload {
+            from { box-shadow: 0 0 5px var(--warning-color); }
+            to { box-shadow: 0 0 15px var(--warning-color); }
+        }
+
+        .log-panel {
+            background: #000;
+            color: #0f0;
+            font-family: monospace;
+            padding: 10px;
+            height: 120px;
+            overflow-y: auto;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            border-top: 1px solid #333;
+        }
+
+        .simulation-panel {
+            display: flex;
+            flex-direction: column;
+            flex: 2;
+        }
+
+        .architecture-diagram {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 6px;
+        }
+
+        .arch-node {
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+            position: relative;
+        }
+        .node-prom { background: #e6522c; color: white; }
+        .node-sidecar { background: var(--primary-color); color: white; }
+        .node-obj { background: var(--accent-color); color: white; }
+
+        .flow-arrow {
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            position: relative;
+        }
+
+        .flow-arrow::after {
+            content: '';
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.7rem;
+            white-space: nowrap;
+        }
+        .arrow-read::after { content: 'Reads /metrics'; }
+        .arrow-upload::after { content: 'Uploads TSDB'; }
+    </style>
 </head>
 <body>
     <header>
         <div class="logo">
             <h1><a href="../index.html" style="color: inherit; text-decoration: none;">Thanos Internals Lab</a></h1>
-            <span class="subtitle">Module: Template</span>
+            <span class="subtitle">Module: Sidecar Internals</span>
         </div>
         <div class="progress-tracker">
             <button id="mark-complete-btn" class="primary">Mark Lab Complete</button>
@@ -20,46 +193,140 @@
     <main style="padding: 1rem;">
         <div class="lab-container">
             <div class="lab-sidebar">
-                <h2>Under Construction</h2>
-                <p>This lab template is ready to be implemented following the Compactor example.</p>
+                <h2>Thanos Sidecar</h2>
+                <p>The Thanos Sidecar is the main component that integrates a vanilla Prometheus instance into the Thanos ecosystem. It runs alongside Prometheus, bridging local storage with global observability.</p>
+
+                <h3>Deep Internal Working</h3>
+                <p>The Sidecar has two primary responsibilities:</p>
+                <ol>
+                    <li><strong>Store API (Serving Data):</strong> It implements Thanos's gRPC Store API. When Thanos Querier needs recent data, it asks the Sidecar, which translates the request into Prometheus's local TSDB queries.</li>
+                    <li><strong>Block Uploading (Long-term Storage):</strong> It watches Prometheus's local data directory. When Prometheus cuts a new persistent TSDB block (usually every 2 hours), the Sidecar detects it and uploads the block to an Object Storage bucket.</li>
+                </ol>
+
+                <h3>Guided Examples</h3>
+                <div class="example-box">
+                    <h4>Example 1: Store API Queries</h4>
+                    <p><strong>Goal:</strong> See how Sidecar handles queries for recent data.</p>
+                    <ol>
+                        <li>Click <strong>"Simulate Query (via Store API)"</strong>.</li>
+                        <li><strong>Observation:</strong> The Sidecar intercepts the gRPC request and fetches data directly from the running Prometheus instance.</li>
+                    </ol>
+                </div>
+
+                <div class="example-box">
+                    <h4>Example 2: Block Upload Flow</h4>
+                    <p><strong>Goal:</strong> Observe how long-term storage is populated.</p>
+                    <ol>
+                        <li>Click <strong>"Prometheus: Cut New Block"</strong>. A new block appears on local disk.</li>
+                        <li><strong>Observation:</strong> The Sidecar detects the new block. After validating it, it uploads it to Object Storage, ensuring the data is backed up globally.</li>
+                    </ol>
+                </div>
+
+                <div class="example-box">
+                    <h4>Example 3: Configuration Playground</h4>
+                    <p><strong>Goal:</strong> Understand key CLI flags.</p>
+                    <p>Toggle flags in the Controls panel and observe their effects:</p>
+                    <ul>
+                        <li><code>--prometheus.url</code>: Tells Sidecar how to reach Prometheus's API for Store API queries.</li>
+                        <li><code>--tsdb.path</code>: The local directory Sidecar watches for new blocks.</li>
+                        <li><code>--objstore.config-file</code>: If omitted, Sidecar won't upload blocks.</li>
+                    </ul>
+                </div>
+
+                <h3>Failure Modes</h3>
+                <ul>
+                    <li><strong>Sidecar cannot read TSDB:</strong> If the Sidecar lacks file permissions for Prometheus's data directory, block uploads will fail silently or log errors.</li>
+                    <li><strong>Prometheus API unreachable:</strong> If <code>--prometheus.url</code> is wrong, Store API queries will fail.</li>
+                    <li><strong>Block overlaps:</strong> If Prometheus's min/max block times overlap unexpectedly, Thanos compactor will complain later. The sidecar only uploads; it doesn't fix overlaps.</li>
+                </ul>
+
                 <h3>References</h3>
                 <ul>
-                    <li><a href="https://thanos.io/" target="_blank">Thanos Documentation</a></li>
+                    <li><a href="https://thanos.io/tip/components/sidecar.md/" target="_blank">Thanos Sidecar Official Documentation</a></li>
                 </ul>
             </div>
+
             <div class="lab-main">
                 <div class="simulation-panel">
                     <div class="simulation-header">
-                        <strong>Visual Simulation: Placeholder</strong>
+                        <strong>Visual Simulation: Sidecar Architecture</strong>
                     </div>
-                    <div class="simulation-canvas" style="display:flex; align-items:center; justify-content:center; color: #888;">
-                        Simulation Canvas Placeholder
+
+                    <div class="architecture-diagram">
+                        <div class="arch-node node-prom">Prometheus</div>
+                        <div class="flow-arrow arrow-read">⇄</div>
+                        <div class="arch-node node-sidecar" id="arch-sidecar">
+                            Thanos Sidecar
+                            <div class="query-indicator" id="query-indicator">Incoming Query!</div>
+                        </div>
+                        <div class="flow-arrow arrow-upload">→</div>
+                        <div class="arch-node node-obj">Object Storage</div>
+                    </div>
+
+                    <div class="simulation-canvas">
+
+                        <div class="region-container">
+                            <!-- Local Disk Space -->
+                            <div class="sidecar-region" style="border-color: #e6522c;">
+                                <span class="region-label" style="color: #e6522c;">Prometheus Local Storage (--tsdb.path)</span>
+                                <div id="local-blocks" style="display:flex; gap: 10px; flex-wrap: wrap; width: 100%;">
+                                    <!-- Local blocks injected here -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="region-container" style="margin-top: 10px;">
+                            <!-- Object Storage Space -->
+                            <div class="sidecar-region" style="border-color: var(--accent-color);">
+                                <span class="region-label" style="color: var(--accent-color);">Object Storage (Bucket)</span>
+                                <div id="bucket-blocks" style="display:flex; gap: 10px; flex-wrap: wrap; width: 100%;">
+                                    <!-- Bucket blocks injected here -->
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                    <div class="log-panel" id="log-panel">
+                        <div>level=info msg="Starting sidecar"</div>
                     </div>
                 </div>
+
                 <div class="controls-panel">
-                    <h3>Controls & Flags</h3>
-                    <p>No controls active for this template.</p>
+                    <h3 style="margin-top:0;">Controls & Actions</h3>
+
+                    <div class="form-group flex gap-1 mb-1">
+                        <button id="btn-cut-block" class="primary" style="flex: 1;">Prometheus: Cut New Block</button>
+                    </div>
+
+                    <div class="form-group flex gap-1 mb-1">
+                        <button id="btn-query" style="flex: 1;">Simulate Query (via Store API)</button>
+                    </div>
+
+                    <hr class="mb-1" style="border-color: var(--border-color);">
+
+                    <h3 style="margin-top:10px;">Configuration Flags</h3>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="flag-objstore" checked>
+                            <code>--objstore.config-file</code>
+                        </label>
+                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">If disabled, Sidecar will NOT upload blocks.</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="flag-prom-url" checked>
+                            <code>--prometheus.url=http://localhost:9090</code>
+                        </label>
+                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">If disabled, Store API queries will fail.</p>
+                    </div>
                 </div>
             </div>
         </div>
     </main>
 
     <script src="../js/app.js"></script>
-    <script>
-        // Basic completion hook
-        const labId = window.location.pathname.split('/').pop().replace('.html', '');
-        const btnComplete = document.getElementById('mark-complete-btn');
-        if (window.ThanosApp && window.ThanosApp.state.isCompleted(labId)) {
-            btnComplete.textContent = "✓ Completed";
-            btnComplete.disabled = true;
-        }
-        btnComplete.addEventListener('click', () => {
-            if (window.ThanosApp) {
-                window.ThanosApp.markLabComplete(labId);
-                btnComplete.textContent = "✓ Completed";
-                btnComplete.disabled = true;
-            }
-        });
-    </script>
+    <script src="../js/modules/sidecar-sim.js"></script>
 </body>
 </html>
