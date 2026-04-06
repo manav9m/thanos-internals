@@ -2,3 +2,11 @@
 127.0.0.1 - - [06/Apr/2026 03:54:33] "GET /css/styles.css HTTP/1.1" 200 -
 127.0.0.1 - - [06/Apr/2026 03:54:33] "GET /js/app.js HTTP/1.1" 200 -
 127.0.0.1 - - [06/Apr/2026 03:54:33] "GET /js/modules/query-sim.js HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 05:42:49] "GET /labs/receive.html HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 05:42:49] "GET /js/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 05:42:49] "GET /css/styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 05:42:49] "GET /js/modules/receive-sim.js HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 05:46:39] "GET /labs/receive.html HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 05:46:39] "GET /css/styles.css HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 05:46:39] "GET /js/app.js HTTP/1.1" 200 -
+127.0.0.1 - - [06/Apr/2026 05:46:39] "GET /js/modules/receive-sim.js HTTP/1.1" 200 -
