@@ -16,12 +16,12 @@
             <p class="subtitle">The immutable foundation of Thanos. Learn how TSDB blocks are stored, structured, and accessed in remote buckets.</p>
         </header>
 
-        <section class="lab-intro">
-            <div class="intro-card">
+        <section class="intro">
+            <div class="mb-1">
                 <h3><i class="fas fa-bullseye"></i> Purpose</h3>
                 <p>Thanos uses Object Storage (like S3, GCS, Azure, etc.) as the primary, infinite storage layer for metrics and metadata. This provides long-term retention and high availability for historical data.</p>
             </div>
-            <div class="intro-card">
+            <div>
                 <h3><i class="fas fa-cogs"></i> Internal Working</h3>
                 <p>Data is stored in native Prometheus <strong>TSDB blocks</strong>. Each block is a directory named with a ULID containing chunk files, an index, and a <code>meta.json</code> file. <strong>All files in object storage are strictly immutable.</strong> Modifications (like compaction or deletion) require creating new blocks and marking old ones for deletion.</p>
             </div>
@@ -29,17 +29,36 @@
 
         <!-- Main Content Layout (Sidebar + Visualizer) -->
         <main class="lab-main">
-            <!-- Left Sidebar -->
-            <aside class="lab-sidebar">
-                <div class="sidebar-section">
-                    <button class="action-btn complete-btn" id="mark-complete" style="width: 100%; background: #2ecc71; border-color: #27ae60;">
+            <!-- Left Visualization Area -->
+            <section class="simulation-panel">
+                <div class="visualization-header">
+                    <h3>Interactive Simulation</h3>
+                    <div class="sim-status">Status: Ready</div>
+                </div>
+
+                <div class="simulation-canvas" id="sim-canvas">
+                    <!-- SVG will be injected here by JS -->
+                </div>
+
+                <div class="visualization-panel" style="padding: 1rem; border-top: 1px solid var(--border-color); background-color: var(--bg-secondary);">
+                    <h4 style="margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">Log Output</h4>
+                    <div class="terminal-output" id="terminal" style="background: #000; color: #0f0; font-family: monospace; padding: 10px; height: 150px; overflow-y: auto; border-radius: 4px; font-size: 0.8rem;">
+                        <div class="log-line info">System initialized. Awaiting commands...</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Sidebar -->
+            <aside class="controls-panel">
+                <div class="mb-1">
+                    <button class="btn primary-btn" id="mark-complete" style="width: 100%; background: #2ecc71; border-color: #27ae60;">
                         <i class="fas fa-check-circle"></i> Mark Lab Complete
                     </button>
                 </div>
 
-                <div class="sidebar-section">
+                <div class="mb-1">
                     <h3><i class="fas fa-sliders-h"></i> Configuration Playground</h3>
-                    <div class="control-group">
+                    <div class="form-group">
                         <label>Storage Provider (<code>type</code>)</label>
                         <select id="storage-provider">
                             <option value="S3">S3 / MinIO</option>
@@ -47,57 +66,38 @@
                             <option value="AZURE">Azure</option>
                             <option value="FILESYSTEM">Local Filesystem (Demo)</option>
                         </select>
-                        <small>Defines the target object storage API.</small>
+                        <span class="help-text">Defines the target object storage API.</span>
                     </div>
-                    <div class="control-group">
+                    <div class="form-group">
                         <label>External Labels (<code>meta.json</code>)</label>
                         <input type="text" id="external-labels" value='cluster="eu1", replica="0"'>
-                        <small>Critical for block identification and sharding.</small>
+                        <span class="help-text">Critical for block identification and sharding.</span>
                     </div>
-                    <button class="action-btn" id="btn-upload-block">Upload TSDB Block</button>
-                    <button class="action-btn" id="btn-read-block">Simulate Store Gateway Read</button>
+                    <button class="btn primary-btn mb-1" id="btn-upload-block" style="width: 100%">Upload TSDB Block</button>
+                    <button class="btn primary-btn" id="btn-read-block" style="width: 100%">Simulate Store Gateway Read</button>
                 </div>
 
-                <div class="sidebar-section">
+                <div class="mb-1">
                     <h3><i class="fas fa-tasks"></i> Scenario Exercises</h3>
-                    <div class="scenario">
+                    <div class="example-box">
                         <h4>Scenario 1: Immutable Deletion</h4>
-                        <p>What happens when data is deleted or compacted in Thanos?</p>
-                        <button class="scenario-btn" id="scen-deletion">Run Scenario</button>
+                        <p class="mb-1">What happens when data is deleted or compacted in Thanos?</p>
+                        <button class="btn warning-btn" id="scen-deletion">Run Scenario</button>
                     </div>
-                    <div class="scenario">
+                    <div class="example-box">
                         <h4>Scenario 2: Missing Index</h4>
-                        <p>How does Thanos handle a corrupted or missing index file?</p>
-                        <button class="scenario-btn" id="scen-corrupt">Run Scenario</button>
+                        <p class="mb-1">How does Thanos handle a corrupted or missing index file?</p>
+                        <button class="btn danger-btn" id="scen-corrupt">Run Scenario</button>
                     </div>
                 </div>
 
-                <div class="sidebar-section">
+                <div class="mb-1">
                     <h3><i class="fas fa-book"></i> References</h3>
-                    <ul class="reference-list">
+                    <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
                         <li><a href="https://thanos.io/tip/thanos/storage.md/" target="_blank">Object Storage & Data Format Docs <i class="fas fa-external-link-alt"></i></a></li>
                     </ul>
                 </div>
             </aside>
-
-            <!-- Right Visualization Area -->
-            <section class="lab-visualizer">
-                <div class="visualization-header">
-                    <h3>Interactive Simulation</h3>
-                    <div class="sim-status">Status: Ready</div>
-                </div>
-
-                <div class="canvas-container" id="sim-canvas">
-                    <!-- SVG will be injected here by JS -->
-                </div>
-
-                <div class="visualization-panel">
-                    <h4>Log Output</h4>
-                    <div class="terminal-output" id="terminal">
-                        <div class="log-line info">System initialized. Awaiting commands...</div>
-                    </div>
-                </div>
-            </section>
         </main>
     </div>
 
