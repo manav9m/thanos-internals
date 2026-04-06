@@ -17,7 +17,7 @@
     </header>
 
     <main class="lab-container">
-        <section class="theory-panel">
+        <section class="lab-sidebar">
             <h2>Thanos Querier</h2>
             <p>
                 The Thanos Querier implements the Prometheus HTTP v1 API. It gathers the data needed to evaluate PromQL queries from underlying StoreAPIs (like Sidecars, Store Gateways, and Rulers), evaluates the query, and returns the result. It is fully stateless and horizontally scalable.
@@ -67,13 +67,15 @@
             </div>
         </section>
 
-        <section class="interactive-panel">
-            <div class="canvas-header">
+        <section class="lab-main">
+            <div class="simulation-panel">
+            <div class="simulation-header">
                 <h3>Visual Simulation: Querier Fanout & Deduplication</h3>
             </div>
 
             <div class="simulation-canvas" id="sim-canvas">
                 <!-- SVG animations will be injected here by JS -->
+            </div>
             </div>
 
             <div class="controls-panel">

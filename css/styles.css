@@ -186,7 +186,7 @@ main {
     display: flex;
     gap: 2rem;
     min-height: calc(100vh - 150px);
-    align-items: stretch;
+    align-items: flex-start;
 }
 
 .lab-sidebar {
