@@ -154,23 +154,50 @@ class DownsamplingSimulation {
             });
         }
 
-        // Animate out raw, animate in 5m
-        this.rawLayer.style.transition = 'opacity 1s';
-        this.rawLayer.style.opacity = '0.2';
-
         this.ds5mLayer.innerHTML = '';
         this.ds5mLayer.style.opacity = '1';
 
-        this.aggr5m.forEach((aggr, i) => {
-            setTimeout(() => {
-                this.drawAggrChunk(this.ds5mLayer, aggr, 'var(--warning-color)', '5m AggrChunk');
-                this.log(`Created 5m AggrChunk ${i+1}/3: { count: ${aggr.count}, min: ${aggr.min.toFixed(2)}, max: ${aggr.max.toFixed(2)}, sum: ${aggr.sum.toFixed(2)} }`, 'success');
+        // Use GSAP to animate raw points merging into 5m chunks
+        const tl = gsap.timeline({
+            onComplete: () => {
+                this.statusText.textContent = 'State: 5m Resolution (3 AggrChunks created)';
+                this.btn1h.disabled = false;
+            }
+        });
 
-                if (i === 2) {
-                    this.statusText.textContent = 'State: 5m Resolution (3 AggrChunks created)';
-                    this.btn1h.disabled = false;
+        // Fade out the connecting raw path
+        tl.to('#raw-path', { opacity: 0, duration: 0.5 });
+
+        this.aggr5m.forEach((aggr, i) => {
+            // Draw the chunk but hide it initially
+            const group = this.drawAggrChunk(this.ds5mLayer, aggr, 'var(--warning-color)', '5m AggrChunk', 50, `ds5m-chunk-${i}`);
+            gsap.set(group, { opacity: 0, scale: 0.5, transformOrigin: "center center" });
+
+            // Gather the 10 points for this bucket
+            const pointsToAnimate = [];
+            for (let j = i * 10; j < (i + 1) * 10; j++) {
+                pointsToAnimate.push(`#raw-pt-${j}`);
+            }
+
+            // Animate points moving to the center of the new 5m chunk
+            tl.to(pointsToAnimate, {
+                attr: { cx: aggr.xPos, cy: this.getY(aggr.avg) },
+                opacity: 0,
+                duration: 0.8,
+                stagger: 0.05,
+                ease: "power2.inOut"
+            }, "-=0.2"); // Overlap slightly
+
+            // Reveal the new AggrChunk
+            tl.to(group, {
+                opacity: 1,
+                scale: 1,
+                duration: 0.5,
+                ease: "back.out(1.7)",
+                onStart: () => {
+                    this.log(`Created 5m AggrChunk ${i+1}/3: { count: ${aggr.count}, min: ${aggr.min.toFixed(2)}, max: ${aggr.max.toFixed(2)}, sum: ${aggr.sum.toFixed(2)} }`, 'success');
                 }
-            }, i * 600);
+            }, "-=0.4");
         });
     }
 
@@ -197,24 +224,71 @@ class DownsamplingSimulation {
             xPos: this.getX(14.5, 30) // Center of all data
         }];
 
-        this.ds5mLayer.style.transition = 'opacity 1s';
-        this.ds5mLayer.style.opacity = '0.2';
-
         this.ds1hLayer.innerHTML = '';
         this.ds1hLayer.style.opacity = '1';
 
-        setTimeout(() => {
-            this.drawAggrChunk(this.ds1hLayer, this.aggr1h[0], 'var(--danger-color)', '1h AggrChunk', 80);
-            this.log(`Created 1h AggrChunk (Merged): { count: ${count}, min: ${min.toFixed(2)}, max: ${max.toFixed(2)}, sum: ${sum.toFixed(2)} }`, 'error');
-            this.statusText.textContent = 'State: 1h Resolution (1 Final AggrChunk)';
-        }, 800);
+        const tl = gsap.timeline({
+            onComplete: () => {
+                this.statusText.textContent = 'State: 1h Resolution (1 Final AggrChunk)';
+            }
+        });
+
+        // 1. Move all 3 5m chunks to the center
+        const finalX = this.aggr1h[0].xPos;
+        const finalY = this.getY(this.aggr1h[0].avg);
+
+        // We use dummy DOM elements we assigned IDs to
+        const chunksToMove = ['#ds5m-chunk-0', '#ds5m-chunk-1', '#ds5m-chunk-2'];
+
+        chunksToMove.forEach(selector => {
+            tl.to(selector, {
+                x: (i, target) => finalX - target.getBoundingClientRect().width/2 - target.getBBox().x,
+                y: (i, target) => finalY - target.getBBox().y - target.getBBox().height/2, // Not exact, GSAP SVG transform origin needs explicit care
+                opacity: 0,
+                scale: 0.1,
+                duration: 1,
+                ease: "power2.inOut"
+            }, "mergeStart");
+        });
+
+        // Add proper GSAP SVG handling: to be robust, just animate the inner x/y of the group, or better:
+        // Just fade and collapse them and expand the new one.
+        tl.clear(); // Reset timeline to do it cleanly via transform strings
+
+        tl.to(chunksToMove, {
+            svgOrigin: `${finalX} ${finalY}`, // Scale towards final center
+            scale: 0,
+            opacity: 0,
+            duration: 1.2,
+            stagger: 0.1,
+            ease: "power2.inOut"
+        }, "start");
+
+
+        const group = this.drawAggrChunk(this.ds1hLayer, this.aggr1h[0], 'var(--danger-color)', '1h AggrChunk', 80, 'ds1h-final');
+        gsap.set(group, { opacity: 0, scale: 0, transformOrigin: "center center" });
+
+        tl.to(group, {
+            opacity: 1,
+            scale: 1,
+            duration: 0.8,
+            ease: "elastic.out(1, 0.5)",
+            onStart: () => {
+                this.log(`Created 1h AggrChunk (Merged): { count: ${count}, min: ${min.toFixed(2)}, max: ${max.toFixed(2)}, sum: ${sum.toFixed(2)} }`, 'error');
+            }
+        }, "-=0.4");
     }
 
-    drawAggrChunk(layer, aggr, color, label, size = 50) {
+    drawAggrChunk(layer, aggr, color, label, size = 50, id = '') {
         const y = this.getY(aggr.avg);
         const x = aggr.xPos;
 
         const g = document.createElementNS(this.svgNS, 'g');
+        if (id) g.setAttribute('id', id);
+
+        // We use standard transformOrigin logic by applying a CSS property manually if needed,
+        // but GSAP handles transformOrigin well if we set it.
+        g.style.transformOrigin = `${x}px ${y}px`;
 
         // Bounding rect for visual chunking
         const rect = document.createElementNS(this.svgNS, 'rect');
@@ -265,6 +339,7 @@ class DownsamplingSimulation {
         g.appendChild(text);
 
         layer.appendChild(g);
+        return g;
     }
 
     reset() {
@@ -272,6 +347,9 @@ class DownsamplingSimulation {
         this.btn5m.disabled = false;
         this.btn1h.disabled = true;
         this.statusText.textContent = 'State: Raw Data (15m span, 30s scrape interval)';
+
+        // Kill any active GSAP animations
+        gsap.killTweensOf("*");
 
         this.rawLayer.style.opacity = '1';
         this.ds5mLayer.style.opacity = '0';
