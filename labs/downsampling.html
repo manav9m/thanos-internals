@@ -3,63 +3,117 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Template - Thanos Internals</title>
+    <title>Thanos Internals Lab - Downsampling</title>
     <link rel="stylesheet" href="../css/styles.css">
+    <style>
+        .aggr-chunk-card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
+        }
+        .aggr-chunk-card pre {
+            margin: 0.25rem 0;
+            color: var(--text-muted);
+        }
+        .highlight-text {
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+    </style>
 </head>
 <body>
-    <header>
-        <div class="logo">
-            <h1><a href="../index.html" style="color: inherit; text-decoration: none;">Thanos Internals Lab</a></h1>
-            <span class="subtitle">Module: Template</span>
+    <header class="lab-header">
+        <div>
+            <h1>Thanos Internals Lab</h1>
+            <p>Module: Downsampling & AggrChunk</p>
         </div>
-        <div class="progress-tracker">
-            <button id="mark-complete-btn" class="primary">Mark Lab Complete</button>
+        <div>
+            <button id="markCompleteBtn" class="btn primary-btn">Mark Lab Complete</button>
+            <a href="../index.html" class="btn secondary-btn" style="margin-left: 10px; text-decoration: none;">Back to Home</a>
         </div>
     </header>
 
-    <main style="padding: 1rem;">
-        <div class="lab-container">
-            <div class="lab-sidebar">
-                <h2>Under Construction</h2>
-                <p>This lab template is ready to be implemented following the Compactor example.</p>
+    <main class="lab-container">
+        <!-- Theory & Context Panel -->
+        <aside class="lab-sidebar">
+            <h2>Thanos Downsampling</h2>
+
+            <p>
+                Downsampling reduces the overall resolution of data samples without losing mathematical accuracy over long time ranges. It is handled by the <strong>Thanos Compactor</strong>.
+            </p>
+
+            <h3>The AggrChunk Structure</h3>
+            <p>
+                Instead of simply dropping data points, Thanos rewrites raw blocks into downsampled blocks using an <code>AggrChunk</code>. For each interval, it stores:
+            </p>
+            <div class="aggr-chunk-card">
+<pre>message AggrChunk {
+  int64 min_time = 1;
+  int64 max_time = 2;
+  Chunk raw     = 3;
+  Chunk count   = 4;
+  Chunk sum     = 5;
+  Chunk min     = 6;
+  Chunk max     = 7;
+  Chunk counter = 8;
+}</pre>
+            </div>
+            <p>
+                This allows accurate results for large duration range queries (using <code>sum</code>, <code>min</code>, <code>max</code>) without fetching millions of raw samples.
+            </p>
+
+            <h3>Downsampling Passes</h3>
+            <p>Downsampling happens in two passes by default:</p>
+            <ol>
+                <li><strong>Raw to 5m:</strong> Applied to blocks older than 40 hours.</li>
+                <li><strong>5m to 1h:</strong> Applied to 5m blocks older than 10 days.</li>
+            </ol>
+
+            <h3>Storage Trade-offs</h3>
+            <p>
+                Downsampling <strong>does not save disk space</strong>. It creates 2 more blocks for each raw block (a ~3x storage increase). The goal is to provide fast "zoom out" query capabilities, not to compress data. If you want to save space, use <em>Retention</em> policies.
+            </p>
+
+            <h3>Controls & Scenarios</h3>
+            <p>Observe 30 raw data points (spanning ~15 minutes). Step through the Compactor's downsampling process.</p>
+
+            <div style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                <button id="btn-ds-5m" class="btn primary">Run 5m Downsample Pass</button>
+                <button id="btn-ds-1h" class="btn warning" disabled>Run 1h Downsample Pass</button>
+                <button id="btn-reset" class="btn">Reset to Raw Data</button>
+            </div>
+
+            <div style="margin-top: 2rem;">
                 <h3>References</h3>
                 <ul>
-                    <li><a href="https://thanos.io/" target="_blank">Thanos Documentation</a></li>
+                    <li><a href="https://thanos.io/tip/components/compact.md/#downsampling" target="_blank" style="color: var(--primary-color);">Thanos Compactor Downsampling Docs</a></li>
                 </ul>
             </div>
-            <div class="lab-main">
-                <div class="simulation-panel">
-                    <div class="simulation-header">
-                        <strong>Visual Simulation: Placeholder</strong>
-                    </div>
-                    <div class="simulation-canvas" style="display:flex; align-items:center; justify-content:center; color: #888;">
-                        Simulation Canvas Placeholder
-                    </div>
-                </div>
-                <div class="controls-panel">
-                    <h3>Controls & Flags</h3>
-                    <p>No controls active for this template.</p>
+        </aside>
+
+        <!-- Interactive Simulation Panel -->
+        <section class="lab-main">
+            <div class="simulation-header">
+                <h3>Visual Simulation: Compactor Downsampling</h3>
+                <span id="sim-status" style="color: var(--text-muted); font-size: 0.9rem;">State: Raw Data (15m span, 30s scrape interval)</span>
+            </div>
+
+            <div id="sim-canvas" style="flex: 1; min-height: 400px; position: relative;">
+                <!-- SVG Canvas will be injected here -->
+            </div>
+
+            <div style="padding: 1rem; border-top: 1px solid var(--border-color); background: var(--bg-secondary);">
+                <div id="log-panel" style="font-family: monospace; font-size: 0.85rem; height: 120px; overflow-y: auto;">
+                    <div style="color: var(--text-muted)">[System] Initialized. 30 raw data points loaded representing 15 minutes of data (scrape_interval: 30s).</div>
                 </div>
             </div>
-        </div>
+        </section>
     </main>
 
     <script src="../js/app.js"></script>
-    <script>
-        // Basic completion hook
-        const labId = window.location.pathname.split('/').pop().replace('.html', '');
-        const btnComplete = document.getElementById('mark-complete-btn');
-        if (window.ThanosApp && window.ThanosApp.state.isCompleted(labId)) {
-            btnComplete.textContent = "✓ Completed";
-            btnComplete.disabled = true;
-        }
-        btnComplete.addEventListener('click', () => {
-            if (window.ThanosApp) {
-                window.ThanosApp.markLabComplete(labId);
-                btnComplete.textContent = "✓ Completed";
-                btnComplete.disabled = true;
-            }
-        });
-    </script>
+    <script src="../js/modules/downsampling-sim.js"></script>
 </body>
 </html>
