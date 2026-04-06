@@ -193,22 +193,27 @@
                     </div>
                     <div class="simulation-canvas" id="sim-canvas">
 
-                        <!-- Retention Zone Indicator -->
-                        <div class="retention-zone" id="retention-zone-raw" style="width: 0%;">
-                            <span class="retention-label">Raw Retention Limit</span>
-                        </div>
-
                         <div class="block-lane">
-                            <div class="block-lane-label">Raw (0s)</div>
-                            <div id="lane-raw" style="flex: 1; position: relative; height: 100%;"></div>
-                        </div>
-                        <div class="block-lane">
-                            <div class="block-lane-label">5m Res</div>
-                            <div id="lane-5m" style="flex: 1; position: relative; height: 100%;"></div>
+                            <!-- Retention Zone Indicator -->
+                            <div class="retention-zone" id="retention-zone-raw" style="width: 0%; top: 0; bottom: 0;">
+                                <span class="retention-label">Raw Retention Limit</span>
+                            </div>
+                            <div class="block-lane-label" style="z-index: 1;">Raw (0s)</div>
+                            <div id="lane-raw" style="flex: 1; position: relative; height: 100%; z-index: 1;"></div>
                         </div>
                         <div class="block-lane">
-                            <div class="block-lane-label">1h Res</div>
-                            <div id="lane-1h" style="flex: 1; position: relative; height: 100%;"></div>
+                            <div class="retention-zone" id="retention-zone-5m" style="width: 0%; top: 0; bottom: 0; background: rgba(255, 165, 0, 0.1); border-right-color: var(--warning-color);">
+                                <span class="retention-label" style="color: var(--warning-color);">5m Retention Limit</span>
+                            </div>
+                            <div class="block-lane-label" style="z-index: 1;">5m Res</div>
+                            <div id="lane-5m" style="flex: 1; position: relative; height: 100%; z-index: 1;"></div>
+                        </div>
+                        <div class="block-lane">
+                            <div class="retention-zone" id="retention-zone-1h" style="width: 0%; top: 0; bottom: 0; background: rgba(255, 0, 0, 0.1); border-right-color: var(--danger-color);">
+                                <span class="retention-label" style="color: var(--danger-color);">1h Retention Limit</span>
+                            </div>
+                            <div class="block-lane-label" style="z-index: 1;">1h Res</div>
+                            <div id="lane-1h" style="flex: 1; position: relative; height: 100%; z-index: 1;"></div>
                         </div>
 
                         <div class="timeline-axis">
@@ -235,6 +240,26 @@
                             <option value="999">0d (Forever)</option>
                             <option value="7">7d</option>
                             <option value="14" selected>14d</option>
+                            <option value="21">21d</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label><code>--retention.resolution-5m</code></label>
+                        <select id="flag-retention-5m">
+                            <option value="999">0d (Forever)</option>
+                            <option value="7">7d</option>
+                            <option value="14">14d</option>
+                            <option value="21" selected>21d</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label><code>--retention.resolution-1h</code></label>
+                        <select id="flag-retention-1h">
+                            <option value="999" selected>0d (Forever)</option>
+                            <option value="7">7d</option>
+                            <option value="14">14d</option>
                             <option value="21">21d</option>
                         </select>
                     </div>

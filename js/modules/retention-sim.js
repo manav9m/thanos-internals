@@ -11,22 +11,29 @@ class RetentionSimulation {
         this.retentionZoneRaw = document.getElementById('retention-zone-raw');
         this.logPanel = document.getElementById('log-panel');
 
+        this.retentionZone5m = document.getElementById('retention-zone-5m');
+        this.retentionZone1h = document.getElementById('retention-zone-1h');
+
         // Controls
         this.flagRetentionRaw = document.getElementById('flag-retention-raw');
+        this.flagRetention5m = document.getElementById('flag-retention-5m');
+        this.flagRetention1h = document.getElementById('flag-retention-1h');
         this.flagDeleteDelay = document.getElementById('flag-delete-delay');
         this.btnIngest = document.getElementById('btn-ingest');
         this.btnAdvance = document.getElementById('btn-advance');
         this.btnReset = document.getElementById('btn-reset');
 
         this.initEventListeners();
-        this.updateRetentionZone();
+        this.updateRetentionZones();
     }
 
     initEventListeners() {
         this.btnIngest.addEventListener('click', () => this.ingestBlock());
         this.btnAdvance.addEventListener('click', () => this.advanceTime());
         this.btnReset.addEventListener('click', () => this.reset());
-        this.flagRetentionRaw.addEventListener('change', () => this.updateRetentionZone());
+        this.flagRetentionRaw.addEventListener('change', () => this.updateRetentionZones());
+        this.flagRetention5m.addEventListener('change', () => this.updateRetentionZones());
+        this.flagRetention1h.addEventListener('change', () => this.updateRetentionZones());
     }
 
     log(msg, level="info") {
@@ -39,23 +46,25 @@ class RetentionSimulation {
         this.logPanel.scrollTop = this.logPanel.scrollHeight;
     }
 
-    updateRetentionZone() {
-        const retentionDays = parseInt(this.flagRetentionRaw.value);
-        if (retentionDays === 999) {
-            this.retentionZoneRaw.style.display = 'none';
-        } else {
-            this.retentionZoneRaw.style.display = 'block';
-            // Calculate width based on maxDays (28)
-            // The zone should start from the right (oldest) and cover up to retention limit
-            // X-axis: 0% is 0d, 100% is 28d
-            const leftPercent = (retentionDays / this.maxDays) * 100;
-            const widthPercent = 100 - leftPercent;
+    updateRetentionZones() {
+        const updateZone = (flagElement, zoneElement) => {
+            const retentionDays = parseInt(flagElement.value);
+            if (retentionDays === 999) {
+                zoneElement.style.display = 'none';
+            } else {
+                zoneElement.style.display = 'block';
+                // Calculate width based on maxDays (28)
+                const leftPercent = (retentionDays / this.maxDays) * 100;
+                const widthPercent = 100 - leftPercent;
 
-            // Note: The blocks age and move right.
-            // So the retention zone is on the right side of the timeline.
-            this.retentionZoneRaw.style.left = `${Math.min(leftPercent, 100)}%`;
-            this.retentionZoneRaw.style.width = `${Math.max(widthPercent, 0)}%`;
-        }
+                zoneElement.style.left = `${Math.min(leftPercent, 100)}%`;
+                zoneElement.style.width = `${Math.max(widthPercent, 0)}%`;
+            }
+        };
+
+        updateZone(this.flagRetentionRaw, this.retentionZoneRaw);
+        updateZone(this.flagRetention5m, this.retentionZone5m);
+        updateZone(this.flagRetention1h, this.retentionZone1h);
     }
 
     createBlockElement(block) {
@@ -103,7 +112,16 @@ class RetentionSimulation {
         this.log(`Advanced time to ${this.timeDays}d`);
 
         const retentionRaw = parseInt(this.flagRetentionRaw.value);
+        const retention5m = parseInt(this.flagRetention5m.value);
+        const retention1h = parseInt(this.flagRetention1h.value);
         const deleteDelay = parseInt(this.flagDeleteDelay.value);
+
+        const getRetentionLimit = (res) => {
+            if (res === 'raw') return retentionRaw;
+            if (res === '5m') return retention5m;
+            if (res === '1h') return retention1h;
+            return 999;
+        };
 
         // Downsampling thresholds (fixed for simulation)
         const downsample5mThreshold = 2; // e.g., 40h
@@ -131,42 +149,52 @@ class RetentionSimulation {
 
             // Downsampling logic (simulating creation of new blocks)
             if (block.res === 'raw' && block.age === downsample5mThreshold) {
-                this.createDownsampledBlock(block, '5m');
+                // Check if raw data is retained long enough to downsample
+                if (retentionRaw >= downsample5mThreshold) {
+                    this.createDownsampledBlock(block, '5m');
+                } else {
+                    this.log(`Warning: Raw block ${block.id} was deleted before downsampling to 5m could occur.`, "warn");
+                }
             }
             if (block.res === '5m' && block.age === downsample1hThreshold) {
-                this.createDownsampledBlock(block, '1h');
+                // Check if 5m data is retained long enough to downsample
+                if (retention5m >= downsample1hThreshold) {
+                    this.createDownsampledBlock(block, '1h');
+                } else {
+                    this.log(`Warning: 5m block for ${block.id} was deleted before downsampling to 1h could occur.`, "warn");
+                }
             }
 
-            // Retention & Deletion Logic (Currently only simulating Raw retention)
-            if (block.res === 'raw') {
-                if (!block.markedForDeletion && block.age > retentionRaw) {
-                    // Mark for deletion
-                    block.markedForDeletion = true;
-                    block.deletionMarkedAt = block.age;
+            // Retention & Deletion Logic (Apply to all resolutions independently)
+            const retentionLimit = getRetentionLimit(block.res);
 
-                    const markEl = block.element.querySelector('.deletion-mark');
-                    tl.to(markEl, { scale: 1, opacity: 1, duration: 0.3, ease: "back.out(2)" }, 0.5);
-                    this.log(`Block ${block.id} exceeded retention limit (${retentionRaw}d). Uploading deletion-mark.json.`);
-                }
+            if (!block.markedForDeletion && block.age > retentionLimit) {
+                // Mark for deletion
+                block.markedForDeletion = true;
+                block.deletionMarkedAt = block.age;
 
-                if (block.markedForDeletion) {
-                    const daysSinceMark = block.age - block.deletionMarkedAt;
-                    if (daysSinceMark >= deleteDelay) {
-                        // Actually delete
-                        tl.to(block.element, {
-                            scale: 0,
-                            opacity: 0,
-                            duration: 0.5,
-                            onComplete: () => {
-                                if (block.element && block.element.parentNode) {
-                                    block.element.parentNode.removeChild(block.element);
-                                }
+                const markEl = block.element.querySelector('.deletion-mark');
+                tl.to(markEl, { scale: 1, opacity: 1, duration: 0.3, ease: "back.out(2)" }, 0.5);
+                this.log(`Block ${block.id} (${block.res}) exceeded retention limit (${retentionLimit}d). Uploading deletion-mark.json.`);
+            }
+
+            if (block.markedForDeletion) {
+                const daysSinceMark = block.age - block.deletionMarkedAt;
+                if (daysSinceMark >= deleteDelay) {
+                    // Actually delete
+                    tl.to(block.element, {
+                        scale: 0,
+                        opacity: 0,
+                        duration: 0.5,
+                        onComplete: () => {
+                            if (block.element && block.element.parentNode) {
+                                block.element.parentNode.removeChild(block.element);
                             }
-                        }, 0.8);
+                        }
+                    }, 0.8);
 
-                        this.log(`Block ${block.id} delete-delay (${deleteDelay}d) expired. Deleting files from object storage.`, "warn");
-                        this.blocks.splice(i, 1);
-                    }
+                    this.log(`Block ${block.id} (${block.res}) delete-delay (${deleteDelay}d) expired. Deleting files from object storage.`, "warn");
+                    this.blocks.splice(i, 1);
                 }
             }
         }
