@@ -185,7 +185,8 @@ main {
 .lab-container {
     display: flex;
     gap: 2rem;
-    height: calc(100vh - 150px);
+    min-height: calc(100vh - 150px);
+    align-items: stretch;
 }
 
 .lab-sidebar {
@@ -194,7 +195,8 @@ main {
     border: 1px solid var(--border-color);
     border-radius: 6px;
     padding: 1.5rem;
-    overflow-y: auto;
+    /* Removed overflow-y to let page scroll naturally */
+    min-width: 300px;
 }
 
 .lab-main {
@@ -202,6 +204,7 @@ main {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    min-width: 0; /* Prevents flex children from overflowing */
 }
 
 .simulation-panel {
@@ -213,6 +216,7 @@ main {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    min-height: 400px;
 }
 
 .simulation-header {
@@ -222,13 +226,16 @@ main {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
 }
 
 .simulation-canvas {
     flex: 1;
     position: relative;
     padding: 1rem;
-    /* CSS Grid or Flex for SVG canvas */
+    overflow-x: auto; /* Allow horizontal scroll for wide svgs */
+    overflow-y: hidden;
 }
 
 .controls-panel {
@@ -237,7 +244,7 @@ main {
     border: 1px solid var(--border-color);
     border-radius: 6px;
     padding: 1.5rem;
-    overflow-y: auto;
+    /* Removed overflow-y to let page scroll naturally */
 }
 
 /* Example Box in Lab Sidebar */
@@ -329,6 +336,24 @@ footer {
     margin-top: auto;
 }
 
+/* Responsive Design (Tablet, small laptops, zoomed displays) */
+@media (max-width: 1100px) {
+    .lab-container {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .lab-sidebar {
+        flex: none;
+        width: 100%;
+    }
+
+    .lab-main {
+        flex: none;
+        width: 100%;
+    }
+}
+
 /* Mobile Responsiveness */
 @media (max-width: 768px) {
     header {
@@ -346,27 +371,8 @@ footer {
         width: 100%;
     }
 
-    .lab-container {
-        flex-direction: column;
-        height: auto;
-    }
-
-    .lab-sidebar {
-        flex: none;
-        max-height: 400px;
-        overflow-y: auto;
-    }
-
-    .lab-main {
-        flex: none;
-    }
-
     .simulation-panel {
         flex: none;
-        min-height: 400px;
-    }
-
-    .controls-panel {
-        flex: none;
+        min-height: 350px;
     }
 }

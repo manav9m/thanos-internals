@@ -1,4 +1,0 @@
-127.0.0.1 - - [04/Apr/2026 11:35:49] "GET /labs/tsdb.html HTTP/1.1" 200 -
-127.0.0.1 - - [04/Apr/2026 11:35:49] "GET /css/styles.css HTTP/1.1" 200 -
-127.0.0.1 - - [04/Apr/2026 11:35:49] "GET /js/modules/tsdb-sim.js HTTP/1.1" 200 -
-127.0.0.1 - - [04/Apr/2026 11:35:49] "GET /js/app.js HTTP/1.1" 200 -
