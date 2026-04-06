@@ -3,14 +3,134 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Template - Thanos Internals</title>
+    <title>Retention & Deletion Lab - Thanos Internals</title>
     <link rel="stylesheet" href="../css/styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        .simulation-canvas {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            background: #111;
+            padding: 20px;
+            min-height: 400px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .timeline-axis {
+            position: absolute;
+            bottom: 40px;
+            left: 20px;
+            right: 20px;
+            height: 2px;
+            background: var(--border-color);
+        }
+
+        .timeline-marker {
+            position: absolute;
+            bottom: -20px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            transform: translateX(-50%);
+        }
+
+        .block-lane {
+            display: flex;
+            align-items: center;
+            height: 80px;
+            position: relative;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+        }
+
+        .block-lane-label {
+            width: 100px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: bold;
+        }
+
+        .ts-block {
+            position: absolute;
+            background-color: var(--highlight-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 10px;
+            text-align: center;
+            width: 60px;
+            box-sizing: border-box;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            /* Transform set by GSAP */
+        }
+
+        .ts-block.res-raw { border-left: 3px solid var(--primary-color); }
+        .ts-block.res-5m { border-left: 3px solid var(--warning-color); }
+        .ts-block.res-1h { border-left: 3px solid var(--danger-color); }
+
+        .ts-block .age {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 5px;
+        }
+
+        .deletion-mark {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: var(--danger-color);
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            box-shadow: 0 0 5px rgba(255,0,0,0.5);
+            opacity: 0;
+            transform: scale(0);
+        }
+
+        .log-panel {
+            background: #000;
+            color: #0f0;
+            font-family: monospace;
+            padding: 10px;
+            height: 150px;
+            overflow-y: auto;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            margin-top: 10px;
+        }
+
+        .retention-zone {
+            position: absolute;
+            top: 0;
+            bottom: 40px;
+            background: rgba(255, 0, 0, 0.1);
+            border-right: 2px dashed var(--danger-color);
+            z-index: 0;
+            pointer-events: none;
+            transition: width 0.3s ease;
+        }
+
+        .retention-label {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: var(--danger-color);
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+    </style>
 </head>
 <body>
     <header>
         <div class="logo">
             <h1><a href="../index.html" style="color: inherit; text-decoration: none;">Thanos Internals Lab</a></h1>
-            <span class="subtitle">Module: Template</span>
+            <span class="subtitle">Module: Retention & Deletion</span>
         </div>
         <div class="progress-tracker">
             <button id="mark-complete-btn" class="primary">Mark Lab Complete</button>
@@ -19,47 +139,128 @@
 
     <main style="padding: 1rem;">
         <div class="lab-container">
+            <!-- Narrative / Docs Pane -->
             <div class="lab-sidebar">
-                <h2>Under Construction</h2>
-                <p>This lab template is ready to be implemented following the Compactor example.</p>
+                <h2>Thanos Data Retention</h2>
+                <p>By default, Thanos object storage has <strong>NO retention limits</strong>. Data is kept forever.</p>
+                <p>Retention limits must be explicitly configured on the Compactor to clean up old blocks and save costs.</p>
+
+                <h3>Resolution-Based Retention</h3>
+                <p>Retention is applied based on the resolution of the block (Raw, 5m, or 1h). This allows you to keep downsampled data for long-term queries while deleting large, raw blocks to save space.</p>
+                <ul>
+                    <li><code>--retention.resolution-raw</code></li>
+                    <li><code>--retention.resolution-5m</code></li>
+                    <li><code>--retention.resolution-1h</code></li>
+                </ul>
+
+                <h3>The Deletion Process (Eventual Consistency)</h3>
+                <p>Thanos does not delete blocks immediately. Because readers (Queriers, Store Gateways) might be actively accessing a block, deleting it straight away would cause query errors.</p>
+                <p>Instead, Thanos uses a two-step deletion process:</p>
+                <ol>
+                    <li><strong>Mark for Deletion:</strong> The Compactor uploads a <code>deletion-mark.json</code> file to the block's directory. This signals to readers to stop using the block.</li>
+                    <li><strong>Delayed Deletion:</strong> The Compactor waits for a duration defined by <code>--delete-delay</code> (default 48h) before finally removing the files from object storage.</li>
+                </ol>
+
+                <div class="example-box">
+                    <h4>Example: The Deletion Lifecycle</h4>
+                    <p><strong>Goal:</strong> Observe how a block ages out of retention and is safely deleted.</p>
+                    <ol>
+                        <li>Set <strong>Raw Retention</strong> to <code>14d</code> and <strong>Delete Delay</strong> to <code>2d</code>.</li>
+                        <li>Click <strong>"Advance Time (1 Day)"</strong> repeatedly.</li>
+                        <li>When the raw block reaches <strong>14 days old</strong>, observe a red <strong>X</strong> appear. This is the <code>deletion-mark.json</code> being added.</li>
+                        <li>Advance time <strong>2 more days</strong>. The block will be fully deleted from storage.</li>
+                    </ol>
+                </div>
+
+                <h3>Common Pitfalls</h3>
+                <ul>
+                    <li><strong>Retention before Downsampling:</strong> If your retention for a resolution is shorter than the time needed to downsample it (e.g., raw retention < 40h), the data will be deleted <em>before</em> it can be downsampled!</li>
+                    <li><strong>Halted Compactor:</strong> Retention is applied <em>after</em> compaction and downsampling loops. If the compactor is halted due to an error (e.g., overlapping blocks), data will never be deleted.</li>
+                </ul>
+
                 <h3>References</h3>
                 <ul>
-                    <li><a href="https://thanos.io/" target="_blank">Thanos Documentation</a></li>
+                    <li><a href="https://thanos.io/tip/components/compact.md/#enforcing-retention-of-data" target="_blank">Thanos Compactor Retention</a></li>
+                    <li><a href="https://thanos.io/tip/components/compact.md/#block-deletions" target="_blank">Thanos Block Deletions</a></li>
                 </ul>
             </div>
+
+            <!-- Interactive Simulation Pane -->
             <div class="lab-main">
                 <div class="simulation-panel">
                     <div class="simulation-header">
-                        <strong>Visual Simulation: Placeholder</strong>
+                        <strong>Visual Simulation: Block Aging & Deletion</strong>
                     </div>
-                    <div class="simulation-canvas" style="display:flex; align-items:center; justify-content:center; color: #888;">
-                        Simulation Canvas Placeholder
+                    <div class="simulation-canvas" id="sim-canvas">
+
+                        <!-- Retention Zone Indicator -->
+                        <div class="retention-zone" id="retention-zone-raw" style="width: 0%;">
+                            <span class="retention-label">Raw Retention Limit</span>
+                        </div>
+
+                        <div class="block-lane">
+                            <div class="block-lane-label">Raw (0s)</div>
+                            <div id="lane-raw" style="flex: 1; position: relative; height: 100%;"></div>
+                        </div>
+                        <div class="block-lane">
+                            <div class="block-lane-label">5m Res</div>
+                            <div id="lane-5m" style="flex: 1; position: relative; height: 100%;"></div>
+                        </div>
+                        <div class="block-lane">
+                            <div class="block-lane-label">1h Res</div>
+                            <div id="lane-1h" style="flex: 1; position: relative; height: 100%;"></div>
+                        </div>
+
+                        <div class="timeline-axis">
+                            <div class="timeline-marker" style="left: 0%;">0d</div>
+                            <div class="timeline-marker" style="left: 25%;">7d</div>
+                            <div class="timeline-marker" style="left: 50%;">14d</div>
+                            <div class="timeline-marker" style="left: 75%;">21d</div>
+                            <div class="timeline-marker" style="left: 100%;">28d</div>
+                        </div>
+
+                    </div>
+                    <div class="log-panel" id="log-panel">
+                        <div>level=info msg="Retention simulator ready"</div>
                     </div>
                 </div>
+
+                <!-- Controls -->
                 <div class="controls-panel">
-                    <h3>Controls & Flags</h3>
-                    <p>No controls active for this template.</p>
+                    <h3 style="margin-top:0;">Controls & Flags</h3>
+
+                    <div class="form-group">
+                        <label><code>--retention.resolution-raw</code></label>
+                        <select id="flag-retention-raw">
+                            <option value="999">0d (Forever)</option>
+                            <option value="7">7d</option>
+                            <option value="14" selected>14d</option>
+                            <option value="21">21d</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label><code>--delete-delay</code></label>
+                        <select id="flag-delete-delay">
+                            <option value="0">0h (Immediate)</option>
+                            <option value="1">24h (1d)</option>
+                            <option value="2" selected>48h (2d)</option>
+                        </select>
+                    </div>
+
+                    <hr class="mb-1" style="border-color: var(--border-color);">
+
+                    <div class="form-group mt-1 flex gap-1">
+                        <button id="btn-ingest" class="mb-1">Ingest New Block</button>
+                        <button id="btn-advance" class="primary">Advance Time (1 Day)</button>
+                        <button id="btn-reset">Reset</button>
+                    </div>
                 </div>
             </div>
         </div>
     </main>
 
     <script src="../js/app.js"></script>
-    <script>
-        // Basic completion hook
-        const labId = window.location.pathname.split('/').pop().replace('.html', '');
-        const btnComplete = document.getElementById('mark-complete-btn');
-        if (window.ThanosApp && window.ThanosApp.state.isCompleted(labId)) {
-            btnComplete.textContent = "✓ Completed";
-            btnComplete.disabled = true;
-        }
-        btnComplete.addEventListener('click', () => {
-            if (window.ThanosApp) {
-                window.ThanosApp.markLabComplete(labId);
-                btnComplete.textContent = "✓ Completed";
-                btnComplete.disabled = true;
-            }
-        });
-    </script>
+    <script src="../js/modules/retention-sim.js"></script>
 </body>
 </html>
