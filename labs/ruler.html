@@ -3,63 +3,107 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Template - Thanos Internals</title>
+    <title>Ruler Lab - Thanos Internals</title>
     <link rel="stylesheet" href="../css/styles.css">
 </head>
 <body>
-    <header>
-        <div class="logo">
-            <h1><a href="../index.html" style="color: inherit; text-decoration: none;">Thanos Internals Lab</a></h1>
-            <span class="subtitle">Module: Template</span>
+    <header class="lab-header">
+        <div class="header-content">
+            <h1>Thanos Internals Lab</h1>
+            <p>Module: Ruler</p>
         </div>
-        <div class="progress-tracker">
-            <button id="mark-complete-btn" class="primary">Mark Lab Complete</button>
-        </div>
+        <button id="markCompleteBtn" class="btn primary-btn">Mark Lab Complete</button>
+        <a href="../index.html" class="btn secondary-btn" style="margin-left: 10px; text-decoration: none;">Back to Home</a>
     </header>
 
-    <main style="padding: 1rem;">
-        <div class="lab-container">
-            <div class="lab-sidebar">
-                <h2>Under Construction</h2>
-                <p>This lab template is ready to be implemented following the Compactor example.</p>
-                <h3>References</h3>
+    <main class="lab-container">
+        <!-- Theory / Explanations -->
+        <section class="lab-sidebar">
+            <h2>Thanos Ruler</h2>
+            <p>
+                The Thanos Ruler evaluates Prometheus recording and alerting rules against a chosen Query API (Thanos Querier).
+                Unlike a normal Prometheus server, it evaluates rules across the global, centralized view provided by Thanos Query, avoiding isolated "siloed" alert evaluation.
+            </p>
+
+            <h3>Deep Internal Working</h3>
+            <p>When Ruler evaluates a rule group, the following happens:</p>
+            <ol>
+                <li><strong>Query Execution:</strong> It sends a PromQL query via HTTP/gRPC to the configured Query nodes.</li>
+                <li><strong>Evaluation:</strong> Based on the results, it computes the recording rule (new timeseries) or determines if an alert condition is met.</li>
+                <li><strong>Stateful Storage (Default):</strong> The evaluation results are written back to its own local TSDB (in Prometheus 2.0 format). Like a Sidecar, the Ruler then exposes a StoreAPI and eventually uploads these blocks to Object Storage.</li>
+                <li><strong>Stateless Storage (Remote Write):</strong> Alternatively, Ruler can skip a local TSDB entirely and use Remote Write to stream the results to a remote storage system (like Thanos Receive).</li>
+                <li><strong>Alerting:</strong> If alerts fire, it sends them to the configured Alertmanagers.</li>
+            </ol>
+
+            <div class="config-section">
+                <h3>Configuration Playground</h3>
+                <p>Toggle these real Thanos flags to observe their effects on Ruler operations.</p>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="flag-stateless">
+                        <code>--remote-write.config</code> (Stateless Mode)
+                    </label>
+                    <span class="help-text">Disables local TSDB and StoreAPI. Ruler only acts as a data producer, streaming results to a remote write endpoint.</span>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="flag-ha">
+                        HA Group & Deduplication
+                    </label>
+                    <span class="help-text">Simulates two Ruler replicas evaluating the same rules. Alerts are deduplicated by Alertmanager, and blocks will be deduplicated by the Compactor later.</span>
+                </div>
+            </div>
+
+            <div class="example-box">
+                <h4>Failure Modes & Troubleshooting</h4>
                 <ul>
-                    <li><a href="https://thanos.io/" target="_blank">Thanos Documentation</a></li>
+                    <li><strong>Evaluation Delay:</strong> <code>prometheus_rule_group_last_duration_seconds &gt; prometheus_rule_group_interval_seconds</code>. Means Querier is too slow to evaluate the rule in time.</li>
+                    <li><strong>Alert Drop:</strong> <code>thanos_alert_sender_alerts_dropped_total &gt; 0</code>. Ruler cannot reach Alertmanager.</li>
+                    <li><strong>Partial Response:</strong> If Querier misses some stores, Rule evaluations might use incomplete data and trigger false alerts.</li>
                 </ul>
             </div>
-            <div class="lab-main">
-                <div class="simulation-panel">
-                    <div class="simulation-header">
-                        <strong>Visual Simulation: Placeholder</strong>
-                    </div>
-                    <div class="simulation-canvas" style="display:flex; align-items:center; justify-content:center; color: #888;">
-                        Simulation Canvas Placeholder
-                    </div>
+
+            <h3>References</h3>
+            <ul>
+                <li><a href="https://thanos.io/tip/components/rule.md/" target="_blank">Thanos Ruler Official Documentation</a></li>
+            </ul>
+        </section>
+
+        <!-- Interactive Simulation -->
+        <section class="lab-main">
+            <div class="simulation-panel">
+                <div class="simulation-header">
+                    <h3>Visual Simulation: Global Rule Evaluation</h3>
+                    <div class="status-indicator" id="sim-status">Status: Ready</div>
                 </div>
-                <div class="controls-panel">
-                    <h3>Controls & Flags</h3>
-                    <p>No controls active for this template.</p>
+
+                <div class="simulation-canvas" id="sim-canvas">
+                    <!-- SVG animations will be injected here by JS -->
                 </div>
             </div>
-        </div>
+
+            <!-- Controls -->
+            <div class="controls-panel">
+                <h3>Controls & Actions</h3>
+                <div class="flex gap-1 mb-1">
+                    <button id="btn-eval-record" class="btn primary">Evaluate Recording Rule</button>
+                    <button id="btn-eval-alert" class="btn warning">Evaluate Alerting Rule</button>
+                </div>
+                <div class="flex gap-1">
+                    <button id="btn-simulate-querier-lag" class="btn danger-btn">Simulate Querier Lag</button>
+                    <button id="btn-reset" class="btn">Reset</button>
+                </div>
+
+                <div class="log-panel" id="log-panel" style="margin-top: 1rem; background: var(--bg-color); padding: 1rem; border-radius: 4px; border: 1px solid var(--border-color); font-family: monospace; font-size: 0.85rem; height: 150px; overflow-y: auto;">
+                    <div style="color: var(--text-muted)">System initialized. Waiting for rule evaluations...</div>
+                </div>
+            </div>
+        </section>
     </main>
 
     <script src="../js/app.js"></script>
-    <script>
-        // Basic completion hook
-        const labId = window.location.pathname.split('/').pop().replace('.html', '');
-        const btnComplete = document.getElementById('mark-complete-btn');
-        if (window.ThanosApp && window.ThanosApp.state.isCompleted(labId)) {
-            btnComplete.textContent = "✓ Completed";
-            btnComplete.disabled = true;
-        }
-        btnComplete.addEventListener('click', () => {
-            if (window.ThanosApp) {
-                window.ThanosApp.markLabComplete(labId);
-                btnComplete.textContent = "✓ Completed";
-                btnComplete.disabled = true;
-            }
-        });
-    </script>
+    <script src="../js/modules/ruler-sim.js"></script>
 </body>
 </html>
