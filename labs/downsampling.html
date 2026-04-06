@@ -90,12 +90,6 @@
             <h3>Controls & Scenarios</h3>
             <p>Observe 30 raw data points (spanning ~15 minutes). Step through the Compactor's downsampling process.</p>
 
-            <div style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
-                <button id="btn-ds-5m" class="btn primary">Run 5m Downsample Pass</button>
-                <button id="btn-ds-1h" class="btn warning" disabled>Run 1h Downsample Pass</button>
-                <button id="btn-reset" class="btn">Reset to Raw Data</button>
-            </div>
-
             <div style="margin-top: 2rem;">
                 <h3>References</h3>
                 <ul>
@@ -106,18 +100,28 @@
 
         <!-- Interactive Simulation Panel -->
         <section class="lab-main">
-            <div class="simulation-header">
-                <h3>Visual Simulation: Compactor Downsampling</h3>
-                <span id="sim-status" style="color: var(--text-muted); font-size: 0.9rem;">State: Raw Data (15m span, 30s scrape interval)</span>
-            </div>
+            <div class="simulation-panel">
+                <div class="simulation-header">
+                    <h3>Visual Simulation: Compactor Downsampling</h3>
+                    <span id="sim-status" style="color: var(--text-muted); font-size: 0.9rem;">State: Raw Data (15m span, 30s scrape interval)</span>
+                </div>
 
-            <div id="sim-canvas" style="flex: 1; min-height: 400px; position: relative;">
-                <!-- SVG Canvas will be injected here -->
-            </div>
+                <div id="sim-canvas" style="flex: 1; min-height: 400px; position: relative;">
+                    <!-- SVG Canvas will be injected here -->
+                </div>
 
-            <div style="padding: 1rem; border-top: 1px solid var(--border-color); background: var(--bg-secondary);">
-                <div id="log-panel" style="font-family: monospace; font-size: 0.85rem; height: 120px; overflow-y: auto;">
-                    <div style="color: var(--text-muted)">[System] Initialized. 30 raw data points loaded representing 15 minutes of data (scrape_interval: 30s).</div>
+                <div style="padding: 1rem; border-top: 1px solid var(--border-color); background: var(--bg-secondary);">
+                    <div id="log-panel" style="font-family: monospace; font-size: 0.85rem; height: 120px; overflow-y: auto;">
+                        <div style="color: var(--text-muted)">[System] Initialized. 30 raw data points loaded representing 15 minutes of data (scrape_interval: 30s).</div>
+                    </div>
+                </div>
+            </div>
+            <div class="controls-panel">
+                <h4>Controls & Actions</h4>
+                <div style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <button id="btn-ds-5m" class="btn primary-btn">Run 5m Downsample Pass</button>
+                    <button id="btn-ds-1h" class="btn danger-btn" disabled>Run 1h Downsample Pass</button>
+                    <button id="btn-reset" class="btn secondary-btn">Reset to Raw Data</button>
                 </div>
             </div>
         </section>
