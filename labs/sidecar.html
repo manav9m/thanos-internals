@@ -6,6 +6,7 @@
     <title>Sidecar Internals Lab - Thanos Internals</title>
     <link rel="stylesheet" href="../css/styles.css">
     <style>
+        /* Specific Sidecar Lab Styles */
         .simulation-canvas {
             display: flex;
             flex-direction: column;
@@ -13,6 +14,7 @@
             background: #111;
             padding: 20px;
             overflow-y: auto;
+            flex: 1;
         }
 
         .region-container {
@@ -24,10 +26,10 @@
         .sidecar-region {
             border: 2px dashed var(--border-color);
             border-radius: 8px;
-            padding: 20px 15px 15px 15px;
+            padding: 25px 15px 15px 15px;
             position: relative;
             background: rgba(0,0,0,0.2);
-            min-height: 120px;
+            min-height: 140px;
             flex: 1;
             display: flex;
             flex-wrap: wrap;
@@ -44,6 +46,34 @@
             color: var(--primary-color);
             font-size: 0.85rem;
             font-weight: bold;
+        }
+
+        /* Head Block (RAM) */
+        .head-block {
+            background-color: rgba(41, 128, 185, 0.2);
+            border: 2px dashed #2980b9;
+            border-radius: 6px;
+            padding: 10px;
+            width: 120px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .head-block-title {
+            font-size: 0.75rem;
+            color: #3498db;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .chunk-bar {
+            height: 6px;
+            background: #3498db;
+            margin-bottom: 3px;
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.3s ease;
         }
 
         /* Persistent Block */
@@ -77,15 +107,16 @@
         .query-indicator {
             position: absolute;
             right: 10px;
-            top: -10px;
+            top: -15px;
             background: var(--accent-color);
             color: #fff;
-            padding: 2px 8px;
+            padding: 4px 8px;
             border-radius: 10px;
             font-size: 0.7rem;
             opacity: 0;
             transform: translateY(-10px);
             transition: all 0.3s ease;
+            z-index: 10;
         }
 
         .query-indicator.active {
@@ -121,24 +152,6 @@
             to { box-shadow: 0 0 15px var(--warning-color); }
         }
 
-        .log-panel {
-            background: #000;
-            color: #0f0;
-            font-family: monospace;
-            padding: 10px;
-            height: 120px;
-            overflow-y: auto;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            border-top: 1px solid #333;
-        }
-
-        .simulation-panel {
-            display: flex;
-            flex-direction: column;
-            flex: 2;
-        }
-
         .architecture-diagram {
             display: flex;
             justify-content: space-around;
@@ -156,8 +169,8 @@
             text-align: center;
             position: relative;
         }
-        .node-prom { background: #e6522c; color: white; }
-        .node-sidecar { background: var(--primary-color); color: white; }
+        .node-prom { background: #e6522c; color: white; border: 2px solid #e6522c; }
+        .node-sidecar { background: var(--primary-color); color: white; border: 2px solid var(--primary-color); }
         .node-obj { background: var(--accent-color); color: white; }
 
         .flow-arrow {
@@ -169,21 +182,58 @@
         .flow-arrow::after {
             content: '';
             position: absolute;
-            top: -15px;
+            top: -20px;
             left: 50%;
             transform: translateX(-50%);
             font-size: 0.7rem;
             white-space: nowrap;
         }
-        .arrow-read::after { content: 'Reads /metrics'; }
-        .arrow-upload::after { content: 'Uploads TSDB'; }
+        .arrow-read::after { content: 'StoreAPI (Reads live)'; }
+        .arrow-upload::after { content: 'Uploads TSDB Blocks'; }
 
-        @media (max-width: 768px) {
+        /* The Pod boundary to show Sidecar & Prom are together */
+        .pod-boundary {
+            border: 1px dashed rgba(255,255,255,0.3);
+            border-radius: 8px;
+            padding: 10px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .pod-label {
+            position: absolute;
+            top: -10px;
+            left: 10px;
+            background: var(--bg-secondary);
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.5);
+            padding: 0 5px;
+        }
+
+        .external-labels-badge {
+            font-size: 0.65rem;
+            background: #e67e22;
+            color: white;
+            padding: 2px 4px;
+            border-radius: 3px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .external-labels-badge.active {
+            display: inline-block;
+        }
+
+        @media (max-width: 900px) {
             .architecture-diagram {
                 flex-direction: column;
                 gap: 20px;
                 padding: 20px;
                 align-items: stretch;
+            }
+            .pod-boundary {
+                flex-direction: column;
             }
             .arch-node {
                 width: 100%;
@@ -217,9 +267,6 @@
                 top: 5px;
                 left: 5px;
             }
-            .simulation-canvas {
-                padding: 10px;
-            }
         }
     </style>
 </head>
@@ -234,87 +281,87 @@
         </div>
     </header>
 
-    <main style="padding: 1rem;">
+    <main>
         <div class="lab-container">
+            <!-- Documentation Side -->
             <div class="lab-sidebar">
                 <h2>Thanos Sidecar</h2>
-                <p>The Thanos Sidecar is the main component that integrates a vanilla Prometheus instance into the Thanos ecosystem. It runs alongside Prometheus, bridging local storage with global observability.</p>
+                <p>Prometheus is a highly efficient local monitoring system, but it is not designed for durable long-term storage or global cross-cluster querying. <strong>Thanos Sidecar</strong> solves this by acting as the bridge between Prometheus and the Thanos ecosystem.</p>
 
-                <h3>Deep Internal Working</h3>
-                <p>The Sidecar has two primary responsibilities:</p>
+                <h3>What is the Sidecar?</h3>
+                <p>The Sidecar runs as a companion process alongside Prometheus. Crucially, it <strong>shares the same TSDB data directory</strong>. It does not store data independently. Instead, it serves two distinct, critical roles:</p>
                 <ol>
-                    <li><strong>Store API (Serving Data):</strong> It implements Thanos's gRPC Store API. When Thanos Querier needs recent data, it asks the Sidecar, which translates the request into Prometheus's local TSDB queries.</li>
-                    <li><strong>Block Uploading (Long-term Storage):</strong> It watches Prometheus's local data directory. When Prometheus cuts a new persistent TSDB block (usually every 2 hours), the Sidecar detects it and uploads the block to an Object Storage bucket.</li>
+                    <li><strong>StoreAPI Provider (Read Path):</strong> It implements the gRPC <code>StoreAPI</code> on top of Prometheus's HTTP remote-read. This makes Prometheus look like a native Thanos data source. When Thanos needs recent/live data, it asks the Sidecar.</li>
+                    <li><strong>Block Uploader (Write Path):</strong> It watches the local TSDB directory. When Prometheus finishes writing a ~2-hour block to disk, the Sidecar uploads it to Object Storage for long-term retention.</li>
                 </ol>
 
-                <h3>Guided Examples</h3>
-                <div class="example-box">
-                    <h4>Example 1: Store API Queries</h4>
-                    <p><strong>Goal:</strong> See how Sidecar handles queries for recent data.</p>
-                    <ol>
-                        <li>Click <strong>"Simulate Query (via Store API)"</strong>.</li>
-                        <li><strong>Observation:</strong> The Sidecar intercepts the gRPC request and fetches data directly from the running Prometheus instance.</li>
-                    </ol>
-                </div>
+                <h3>The 2-Hour Upload Rule (Crucial)</h3>
+                <p>A common misconception is that Sidecar uploads real-time metrics. <strong>It does not.</strong> Sidecar <em>only</em> uploads completely cut, immutable TSDB blocks (typically every 2 hours). Live, in-progress data (the Head Block) is served to queries via the StoreAPI, not from Object Storage.</p>
 
-                <div class="example-box">
-                    <h4>Example 2: Block Upload Flow</h4>
-                    <p><strong>Goal:</strong> Observe how long-term storage is populated.</p>
-                    <ol>
-                        <li>Click <strong>"Prometheus: Cut New Block"</strong>. A new block appears on local disk.</li>
-                        <li><strong>Observation:</strong> The Sidecar detects the new block. After validating it, it uploads it to Object Storage, ensuring the data is backed up globally.</li>
-                    </ol>
-                </div>
+                <h3>External Labels: The Absolute Requirement</h3>
+                <p>Prometheus must be configured with <code>external_labels</code> (e.g., <code>cluster="prod-eu1"</code>, <code>replica="0"</code>). Sidecar injects these labels into the metadata of uploaded blocks and StoreAPI responses. Without these labels, Thanos cannot deduplicate data or identify where metrics came from, and the system <strong>will logically break</strong>.</p>
 
-                <div class="example-box">
-                    <h4>Example 3: Configuration Playground</h4>
-                    <p><strong>Goal:</strong> Understand key CLI flags.</p>
-                    <p>Toggle flags in the Controls panel and observe their effects:</p>
-                    <ul>
-                        <li><code>--prometheus.url</code>: Tells Sidecar how to reach Prometheus's API for Store API queries.</li>
-                        <li><code>--tsdb.path</code>: The local directory Sidecar watches for new blocks.</li>
-                        <li><code>--objstore.config-file</code>: If omitted, Sidecar won't upload blocks.</li>
-                    </ul>
-                </div>
+                <h3>Storage & Compaction Requirements</h3>
+                <p>Because Sidecar uploads blocks to global storage, <strong>Prometheus local compaction must be disabled</strong> (or heavily constrained). If Prometheus compacts blocks locally after Sidecar uploads them, Thanos will encounter corrupted or overlapping data in object storage. By default, Prometheus cuts blocks every 2 hours; Sidecar relies on this exact cadence.</p>
 
-                <h3>Failure Modes</h3>
+                <h3>Mental Model</h3>
                 <ul>
-                    <li><strong>Sidecar cannot read TSDB:</strong> If the Sidecar lacks file permissions for Prometheus's data directory, block uploads will fail silently or log errors.</li>
-                    <li><strong>Prometheus API unreachable:</strong> If <code>--prometheus.url</code> is wrong, Store API queries will fail.</li>
-                    <li><strong>Block overlaps:</strong> If Prometheus's min/max block times overlap unexpectedly, Thanos compactor will complain later. The sidecar only uploads; it doesn't fix overlaps.</li>
+                    <li><strong>Prometheus:</strong> Produces data, holds live metrics in RAM (Head).</li>
+                    <li><strong>Sidecar:</strong> Bridge + Uploader + API Layer.</li>
+                    <li><strong>Object Storage:</strong> Boundless long-term storage.</li>
+                </ul>
+
+                <h3>Real-World Behavior & Failure Modes</h3>
+                <ul>
+                    <li><strong>Sidecar Crashes:</strong> Prometheus keeps scraping. Blocks accumulate locally. When Sidecar restarts, it resumes uploading the queued blocks.</li>
+                    <li><strong>Object Storage Down:</strong> Same as above. Blocks wait on local disk until the connection is restored.</li>
+                    <li><strong>Missing External Labels:</strong> Sidecar will refuse to start or refuse to upload blocks to prevent data corruption.</li>
                 </ul>
 
                 <h3>References</h3>
                 <ul>
-                    <li><a href="https://thanos.io/tip/components/sidecar.md/" target="_blank">Thanos Sidecar Official Documentation</a></li>
+                    <li><a href="https://thanos.io/tip/components/sidecar.md/" target="_blank">Thanos Sidecar Official Docs</a></li>
+                    <li><a href="https://prometheus.io/docs/prometheus/latest/configuration/configuration/#global" target="_blank">Prometheus External Labels</a></li>
                 </ul>
             </div>
 
+            <!-- Simulation Side -->
             <div class="lab-main">
-                <div class="simulation-panel">
-                    <div class="simulation-header">
-                        <strong>Visual Simulation: Sidecar Architecture</strong>
-                    </div>
+                <div class="visualization-panel">
+                    <div class="panel-header">Interactive Simulation: Sidecar Data Flow</div>
 
                     <div class="architecture-diagram">
-                        <div class="arch-node node-prom">Prometheus</div>
-                        <div class="flow-arrow arrow-read">⇄</div>
-                        <div class="arch-node node-sidecar" id="arch-sidecar">
-                            Thanos Sidecar
-                            <div class="query-indicator" id="query-indicator">Incoming Query!</div>
+                        <div class="pod-boundary">
+                            <span class="pod-label">Pod / Shared Network & Volume</span>
+                            <div class="arch-node node-prom">
+                                Prometheus
+                                <div class="external-labels-badge" id="arch-labels">cluster=prod, replica=0</div>
+                            </div>
+                            <div class="flow-arrow arrow-read">⇄</div>
+                            <div class="arch-node node-sidecar" id="arch-sidecar">
+                                Thanos Sidecar
+                                <div class="query-indicator" id="query-indicator">StoreAPI Query!</div>
+                            </div>
                         </div>
                         <div class="flow-arrow arrow-upload">→</div>
                         <div class="arch-node node-obj">Object Storage</div>
                     </div>
 
                     <div class="simulation-canvas">
-
                         <div class="region-container">
                             <!-- Local Disk Space -->
                             <div class="sidecar-region" style="border-color: #e6522c;">
-                                <span class="region-label" style="color: #e6522c;">Prometheus Local Storage (--tsdb.path)</span>
-                                <div id="local-blocks" style="display:flex; gap: 10px; flex-wrap: wrap; width: 100%;">
-                                    <!-- Local blocks injected here -->
+                                <span class="region-label" style="color: #e6522c;">Prometheus TSDB Volume (--tsdb.path)</span>
+
+                                <div class="head-block" id="head-block">
+                                    <div class="head-block-title">Head Block (Live RAM)</div>
+                                    <div class="chunk-bar" id="chunk1"></div>
+                                    <div class="chunk-bar" id="chunk2"></div>
+                                    <div class="chunk-bar" id="chunk3"></div>
+                                </div>
+
+                                <div id="local-blocks" style="display:flex; gap: 10px; flex-wrap: wrap;">
+                                    <!-- Local cut blocks injected here -->
                                 </div>
                             </div>
                         </div>
@@ -328,43 +375,50 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
 
-                    </div>
-                    <div class="log-panel" id="log-panel">
-                        <div>level=info msg="Starting sidecar"</div>
-                    </div>
+                    <div class="terminal" id="terminal"></div>
                 </div>
 
                 <div class="controls-panel">
-                    <h3 style="margin-top:0;">Controls & Actions</h3>
+                    <div class="panel-header">Data Pipeline Controls</div>
 
-                    <div class="form-group flex gap-1 mb-1">
-                        <button id="btn-cut-block" class="primary" style="flex: 1;">Prometheus: Cut New Block</button>
+                    <div class="control-group">
+                        <label>1. Ingest Live Data</label>
+                        <button id="btn-scrape" class="primary w-100">Simulate Scrape (Fill Head Block)</button>
+                        <p class="control-help">Fills Prometheus Head Block. Notice Sidecar does NOT upload this live data.</p>
                     </div>
 
-                    <div class="form-group flex gap-1 mb-1">
-                        <button id="btn-query" style="flex: 1;">Simulate Query (via Store API)</button>
+                    <div class="control-group">
+                        <label>2. Complete TSDB Block</label>
+                        <button id="btn-cut-block" class="w-100" disabled>Wait 2h (Cut Block to Disk)</button>
+                        <p class="control-help">Simulates 2 hours passing. Head block flushes to an immutable persistent block. Sidecar will detect this.</p>
                     </div>
 
-                    <hr class="mb-1" style="border-color: var(--border-color);">
+                    <div class="control-group">
+                        <label>3. Read Live Data</label>
+                        <button id="btn-query" class="w-100">Query StoreAPI</button>
+                        <p class="control-help">Sidecar uses StoreAPI to fetch recent data directly from Prometheus's Head Block.</p>
+                    </div>
 
-                    <h3 style="margin-top:10px;">Configuration Flags</h3>
+                    <div class="panel-header mt-2">Sidecar Configuration Flags</div>
 
-                    <div class="form-group">
-                        <label>
+                    <div class="control-group">
+                        <label class="toggle-control">
+                            <input type="checkbox" id="flag-ext-labels" checked>
+                            <span>Prometheus <code>external_labels</code></span>
+                        </label>
+                        <p class="control-help">Crucial for deduplication. If missing, Sidecar refuses to upload blocks.</p>
+                    </div>
+
+                    <div class="control-group">
+                        <label class="toggle-control">
                             <input type="checkbox" id="flag-objstore" checked>
-                            <code>--objstore.config-file</code>
+                            <span><code>--objstore.config-file</code></span>
                         </label>
-                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">If disabled, Sidecar will NOT upload blocks.</p>
+                        <p class="control-help">Connects to remote storage. If disabled, blocks queue locally.</p>
                     </div>
 
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="flag-prom-url" checked>
-                            <code>--prometheus.url=http://localhost:9090</code>
-                        </label>
-                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">If disabled, Store API queries will fail.</p>
-                    </div>
                 </div>
             </div>
         </div>
