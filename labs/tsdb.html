@@ -70,32 +70,20 @@
             animation: slideIn 0.3s ease-out;
         }
 
-        /* MMAP */
-        .mmap-chunk {
-            background-color: #1a202c;
-            border: 1px dashed var(--text-muted);
-            border-radius: 4px;
-            padding: 8px;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.7rem;
-            color: var(--text-muted);
-        }
-
         /* Persistent Block */
         .persistent-block {
             background-color: var(--highlight-bg);
             border: 2px solid var(--success-color);
             border-radius: 6px;
             padding: 10px;
-            text-align: center;
-            width: 100px;
+            text-align: left;
+            width: 140px;
             animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            font-family: monospace;
+            font-size: 0.75rem;
         }
-        .persistent-block .size { font-size: 0.7rem; color: var(--text-muted); }
+        .persistent-block .ulid { font-weight: bold; margin-bottom: 4px; color: var(--primary-color); }
+        .persistent-block .file { margin-left: 10px; color: var(--text-muted); }
 
         @keyframes slideIn {
             from { opacity: 0; transform: translateX(-10px); }
@@ -106,7 +94,7 @@
             100% { transform: scale(1); opacity: 1; }
         }
 
-        .log-panel {
+        .terminal-output {
             background: #000;
             color: #0f0;
             font-family: monospace;
@@ -119,7 +107,7 @@
         }
 
         /* Layout overrides for simulation area */
-        .simulation-panel {
+        .visualization-panel {
             display: flex;
             flex-direction: column;
             flex: 2;
@@ -136,87 +124,82 @@
             <span class="subtitle">Module: TSDB Internals</span>
         </div>
         <div class="progress-tracker">
-            <button id="mark-complete-btn" class="primary">Mark Lab Complete</button>
+            <button id="mark-complete-btn" class="btn primary-btn">Mark Lab Complete</button>
         </div>
     </header>
 
     <main style="padding: 1rem;">
         <div class="lab-container">
             <div class="lab-sidebar">
-                <h2>Prometheus/Thanos TSDB</h2>
-                <p>Thanos is built directly on top of the Prometheus Time Series Database (TSDB). Understanding how data flows from memory to disk is crucial for operating Thanos.</p>
+                <h2>Prometheus TSDB Architecture</h2>
+                <p><strong>What is TSDB?</strong> Prometheus uses a highly optimized Time-Series Database (TSDB) to store metrics. Before understanding Thanos, you <em>must</em> understand exactly how Prometheus stores data locally, because Thanos is designed to integrate directly with this exact storage format.</p>
+                <p><strong>Goal of this lab:</strong> By the end, you will understand how incoming metrics flow from memory into the Write-Ahead Log (WAL), are held in the Head Block, and are eventually compacted into immutable, persistent TSDB Blocks on disk.</p>
 
-                <h3>Deep Internal Working</h3>
-                <p>The TSDB uses a multi-stage approach to balance high ingestion throughput with efficient querying:</p>
+                <h3>1. Write-Ahead Log (WAL) & Crash Recovery</h3>
+                <p>Every scraped sample is immediately written to an append-only file on disk called the <strong>Write-Ahead Log (WAL)</strong>. The WAL is not queried during normal operations; it exists purely as a safety net. If Prometheus crashes, the in-memory data is lost. Upon restart, Prometheus replays the WAL to perfectly reconstruct the lost memory state.</p>
+
+                <h3>2. The Head Block (Recent Data)</h3>
+                <p>Active, incoming data lives in the <strong>Head Block</strong>. This block is partially in RAM (for extremely fast writes and reads of recent data) and partially flushed to disk (memory-mapped chunks) as it fills up. When you query Prometheus for "live" data, it queries the Head Block. Thanos Sidecar also reads the Head Block to serve recent data to Thanos Query.</p>
+
+                <h3>3. Block Creation & Local Compaction</h3>
+                <p>Every ~2 hours, the current Head Block is "cut". The data is compacted and flushed to disk as a new, immutable <strong>Persistent Block</strong>. Once created, a block is never modified. At this point, the old WAL is truncated (deleted) because the data is now safely stored in the block.</p>
+                <p><em>Note:</em> Prometheus performs its own local compaction (merging small 2h blocks into larger ones) entirely independently of Thanos. The Thanos Compactor operates only on blocks <em>after</em> they are uploaded to Object Storage.</p>
+
+                <h3>4. Internal Block Structure</h3>
+                <p>A TSDB Block is a directory with a specific, globally unique name called a <strong>ULID</strong> (Universally Unique Lexicographically Sortable Identifier). The ULID ensures blocks can be ordered chronologically. Inside the directory:</p>
                 <ul>
-                    <li><strong>Head Block (Memory):</strong> Active incoming samples are kept in memory in "chunks". A chunk holds data for a single time series. Typically, chunks hold up to 120 samples.</li>
-                    <li><strong>Write-Ahead Log (WAL):</strong> Because the Head is in memory, a crash would cause data loss. Every sample appended to the Head is simultaneously written to an append-only file on disk called the WAL.</li>
-                    <li><strong>Memory-Mapping (mmap):</strong> When a chunk in the Head block gets full, it is flushed to disk and memory-mapped. This keeps memory usage stable while keeping recent data available for fast querying.</li>
-                    <li><strong>Persistent Blocks:</strong> Periodically (default 2h), the active Head block is "cut". The mapped chunks and the current WAL are compacted into a persistent, immutable Block directory (containing an <code>index</code>, <code>chunks/</code>, and <code>meta.json</code>). The old WAL is truncated.</li>
+                    <li><code>chunks/</code>: The actual compressed time-series data.</li>
+                    <li><code>index</code>: A highly optimized reverse-index mapping metric labels to chunks, enabling fast query lookups.</li>
+                    <li><code>meta.json</code>: Metadata including the block's minTime, maxTime, and source labels.</li>
                 </ul>
 
-                <h3>Guided Examples</h3>
-                <div class="example-box">
-                    <h4>Example 1: Ingestion & WAL</h4>
-                    <p><strong>Goal:</strong> See how data is secured before being persisted to a block.</p>
-                    <ol>
-                        <li>Click <strong>"Simulate Scrape (Ingest Samples)"</strong> several times.</li>
-                        <li><strong>Observation:</strong> Active chunks in memory fill up. Simultaneously, WAL records are appended to disk ensuring durability against crashes.</li>
-                    </ol>
-                </div>
-
-                <div class="example-box">
-                    <h4>Example 2: Chunk Flushing (mmap)</h4>
-                    <p><strong>Goal:</strong> Understand how TSDB manages memory.</p>
-                    <ol>
-                        <li>Continue clicking <strong>"Simulate Scrape"</strong> until memory chunks reach 100% full.</li>
-                        <li><strong>Observation:</strong> Full chunks are flushed from RAM to the "mmap" region on disk. They are still readable via memory-mapping, but RAM is freed up for new incoming samples.</li>
-                    </ol>
-                </div>
-
-                <div class="example-box">
-                    <h4>Example 3: Block Cutting & WAL Truncation</h4>
-                    <p><strong>Goal:</strong> See how immutable blocks are created.</p>
-                    <ol>
-                        <li>Click <strong>"Cut Block (2h elapsed)"</strong>.</li>
-                        <li><strong>Observation:</strong> All mmap'd chunks and current Head data are written into a final, immutable 2h Block. The WAL is truncated (cleared), starting fresh for the new Head block.</li>
-                    </ol>
-                </div>
-
-                <div class="example-box">
-                    <h4>Example 4: Crash Recovery</h4>
-                    <p><strong>Goal:</strong> See the WAL in action during an outage.</p>
-                    <ol>
-                        <li>Ingest some samples so the WAL has records. Do not cut a block.</li>
-                        <li>Click <strong>"Simulate Process Crash"</strong>. The Head and mmap memory are lost.</li>
-                        <li>Click <strong>"Start TSDB (Recover)"</strong>.</li>
-                        <li><strong>Observation:</strong> The TSDB replays the WAL from disk to rebuild the exact state of the in-memory Head block before the crash.</li>
-                    </ol>
-                </div>
-
-                <h3>Failure Modes</h3>
+                <h3>Mental Model</h3>
                 <ul>
-                    <li><strong>WAL Corruption:</strong> If the WAL file is corrupted (e.g., hardware failure, bad disk flush), the TSDB might fail to start. Sometimes requires manual WAL truncation (losing recent un-compacted data).</li>
-                    <li><strong>OOM on Startup:</strong> Replaying a massive WAL during crash recovery requires high memory spikes. If limits are too tight, the container will OOM loop.</li>
+                    <li><strong>WAL:</strong> The durability safety net. Append-only.</li>
+                    <li><strong>Head Block:</strong> The "Live" data area. Fast reads/writes.</li>
+                    <li><strong>Blocks:</strong> Immutable, compressed, long-term storage units (2h spans).</li>
                 </ul>
+
+                <hr class="mb-1 mt-1" style="border-color: var(--border-color);">
+
+                <h3>Hands-On Scenario Exercises</h3>
+
+                <div class="scenario-box mb-1" style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 4px; border-left: 3px solid var(--primary-color);">
+                    <h4>Scenario 1: Ingestion & Safety</h4>
+                    <p>Click "Simulate Scrape". Observe how data enters the Head Block (RAM) while <em>simultaneously</em> being appended to the WAL (Disk). The data is available for queries in the Head, but safely backed up in the WAL.</p>
+                </div>
+
+                <div class="scenario-box mb-1" style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 4px; border-left: 3px solid var(--success-color);">
+                    <h4>Scenario 2: Creating Immutable Blocks</h4>
+                    <p>Scrape data until you have several chunks. Click "Cut Block (2h elapsed)". Observe the Head Block being flushed into a permanent Block directory with a ULID, <code>chunks</code>, <code>index</code>, and <code>meta.json</code>. The WAL is then truncated.</p>
+                </div>
+
+                <div class="scenario-box mb-1" style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 4px; border-left: 3px solid var(--danger-color);">
+                    <h4>Scenario 3: Crash & Recovery</h4>
+                    <p>Ingest data (do not cut a block). Click "Simulate Process Crash". The Head Block (memory) is wiped out. Now click "Start TSDB (Recover)". Watch how Prometheus reads the WAL from disk to perfectly rebuild the Head Block.</p>
+                </div>
+
+                <h3>Connection to Thanos</h3>
+                <p>Now that you understand how Prometheus creates immutable TSDB Blocks every 2 hours... The <strong>Thanos Sidecar</strong> watches this local TSDB directory. Every time a new block appears, the Sidecar uploads it to Object Storage. This is the foundation of Thanos!</p>
 
                 <h3>References</h3>
                 <ul>
-                    <li><a href="https://thanos.io/tip/components/sidecar.md/" target="_blank">Thanos Sidecar & TSDB block format</a></li>
-                    <li><a href="https://prometheus.io/docs/prometheus/latest/storage/" target="_blank">Prometheus Local Storage</a></li>
+                    <li><a href="https://prometheus.io/docs/prometheus/latest/storage/" target="_blank">Prometheus Local Storage Docs</a></li>
+                    <li><a href="https://thanos.io/tip/components/sidecar.md/" target="_blank">Thanos Sidecar Architecture</a></li>
                 </ul>
             </div>
 
             <div class="lab-main">
-                <div class="simulation-panel">
-                    <div class="simulation-header">
-                        <strong>Visual Simulation: TSDB Ingestion Flow</strong>
+                <div class="visualization-panel">
+                    <div class="simulation-header" style="background: var(--bg-secondary); padding: 10px; border-bottom: 1px solid var(--border-color);">
+                        <strong>Interactive Simulation: TSDB Ingestion Flow</strong>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">Status: <span id="sim-status">Running</span></div>
                     </div>
                     <div class="simulation-canvas">
 
                         <!-- Memory Space -->
                         <div class="tsdb-region" style="border-color: var(--primary-color);">
-                            <span class="tsdb-region-label">Head Block (RAM)</span>
+                            <span class="tsdb-region-label">Head Block (Memory / Active)</span>
                             <div id="head-chunks" style="display:flex; gap: 5px; flex-wrap: wrap; width: 100%;">
                                 <!-- Chunks injected here -->
                             </div>
@@ -224,52 +207,46 @@
 
                         <!-- Disk Space (WAL) -->
                         <div class="tsdb-region" style="border-color: var(--warning-color);">
-                            <span class="tsdb-region-label">Write-Ahead Log (Disk)</span>
+                            <span class="tsdb-region-label">Write-Ahead Log (Disk / Durability)</span>
                             <div id="wal-records" style="display:flex; gap: 5px; flex-wrap: wrap; width: 100%;">
                                 <!-- WAL records here -->
                             </div>
                         </div>
 
-                        <!-- Disk Space (mmap) -->
-                        <div class="tsdb-region" style="border-color: var(--text-muted);">
-                            <span class="tsdb-region-label">mmap'd Chunks (Disk)</span>
-                            <div id="mmap-chunks" style="display:flex; gap: 5px; flex-wrap: wrap; width: 100%;">
-                                <!-- MMAP chunks here -->
-                            </div>
-                        </div>
-
                         <!-- Disk Space (Blocks) -->
                         <div class="tsdb-region" style="border-color: var(--success-color);">
-                            <span class="tsdb-region-label">Persistent TSDB Blocks (Disk)</span>
+                            <span class="tsdb-region-label">Persistent TSDB Blocks (Disk / Immutable)</span>
                             <div id="persistent-blocks" style="display:flex; gap: 10px; flex-wrap: wrap; width: 100%;">
                                 <!-- Immutable blocks here -->
                             </div>
                         </div>
 
                     </div>
-                    <div class="log-panel" id="log-panel">
-                        <div>level=info msg="TSDB started, listening for samples"</div>
+                    <div class="terminal-output" id="log-panel">
+                        <div style="color: var(--text-muted)">System initialized. Awaiting metrics...</div>
+                        <div>[00:00:00] Prometheus TSDB started. Head block empty.</div>
                     </div>
                 </div>
 
                 <div class="controls-panel">
-                    <h3 style="margin-top:0;">Controls</h3>
+                    <h3 style="margin-top:0;">TSDB Controls</h3>
 
                     <div class="form-group flex gap-1 mb-1">
-                        <button id="btn-scrape" class="primary" style="flex: 1;">Simulate Scrape (Ingest Samples)</button>
+                        <button id="btn-scrape" class="btn primary-btn" style="flex: 1;">Simulate Scrape (Ingest Samples)</button>
                     </div>
 
                     <div class="form-group flex gap-1 mb-1">
-                        <button id="btn-cut" style="flex: 1;">Cut Block (2h elapsed)</button>
+                        <button id="btn-cut" class="btn" style="flex: 1;">Cut Block (2h elapsed)</button>
                     </div>
 
                     <hr class="mb-1" style="border-color: var(--border-color);">
+                    <h4 style="margin-top:0;">Failure Modes</h4>
 
                     <div class="form-group flex gap-1 mb-1">
-                        <button id="btn-crash" style="background-color: var(--danger-color); color: white; border-color: var(--danger-color); flex: 1;">Simulate Process Crash</button>
+                        <button id="btn-crash" class="btn danger-btn" style="flex: 1;">Simulate Process Crash</button>
                     </div>
                     <div class="form-group flex gap-1">
-                        <button id="btn-recover" disabled style="flex: 1;">Start TSDB (Recover)</button>
+                        <button id="btn-recover" class="btn warning-btn" disabled style="flex: 1;">Start TSDB (Recover from WAL)</button>
                     </div>
                 </div>
             </div>

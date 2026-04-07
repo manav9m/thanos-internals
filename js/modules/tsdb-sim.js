@@ -4,9 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- State ---
     let state = {
         headChunks: [], // active chunks in memory
-        mmapChunks: 0,  // count of flushed chunks on disk
         walRecords: 0,  // count of WAL appends
-        blocks: 0,      // count of persistent blocks
+        blocks: [],     // persistent blocks
         isCrashed: false,
         chunkIdCounter: 1
     };
@@ -16,9 +15,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- DOM Elements ---
     const headContainer = document.getElementById('head-chunks');
     const walContainer = document.getElementById('wal-records');
-    const mmapContainer = document.getElementById('mmap-chunks');
     const blocksContainer = document.getElementById('persistent-blocks');
     const logPanel = document.getElementById('log-panel');
+    const simStatus = document.getElementById('sim-status');
 
     const btnScrape = document.getElementById('btn-scrape');
     const btnCut = document.getElementById('btn-cut');
@@ -40,11 +39,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Utilities ---
+    function generateULID() {
+        const chars = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+        let ulid = '01'; // Simulated timestamp prefix
+        for(let i=0; i<24; i++) {
+            ulid += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return ulid;
+    }
+
+    function getTimestamp() {
+        const now = new Date();
+        return `[${now.toTimeString().split(' ')[0]}]`;
+    }
+
     function log(msg, level = 'info') {
         const line = document.createElement('div');
-        line.textContent = `level=${level} msg="${msg}"`;
-        if (level === 'warn') line.style.color = 'yellow';
-        if (level === 'error') line.style.color = 'red';
+        line.textContent = `${getTimestamp()} ${msg}`;
+        if (level === 'warn') line.style.color = 'var(--warning-color)';
+        if (level === 'error') line.style.color = 'var(--danger-color)';
         logPanel.appendChild(line);
         logPanel.scrollTop = logPanel.scrollHeight;
     }
@@ -54,38 +67,46 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderState() {
         // Render Head Chunks
         headContainer.innerHTML = '';
-        state.headChunks.forEach(chunk => {
-            const el = document.createElement('div');
-            el.className = `memory-chunk ${chunk.samples >= CHUNK_MAX_SAMPLES ? 'full' : ''}`;
-            el.innerHTML = `${chunk.samples}/${CHUNK_MAX_SAMPLES}`;
-            headContainer.appendChild(el);
-        });
+        if (state.headChunks.length === 0) {
+             headContainer.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem; font-style:italic;">Empty</span>';
+        } else {
+            state.headChunks.forEach(chunk => {
+                const el = document.createElement('div');
+                el.className = `memory-chunk ${chunk.samples >= CHUNK_MAX_SAMPLES ? 'full' : ''}`;
+                el.innerHTML = `${chunk.samples}/${CHUNK_MAX_SAMPLES}`;
+                headContainer.appendChild(el);
+            });
+        }
 
         // Render WAL
         walContainer.innerHTML = '';
-        for (let i = 0; i < state.walRecords; i++) {
-            const el = document.createElement('div');
-            el.className = 'wal-record';
-            el.textContent = 'Rec';
-            walContainer.appendChild(el);
-        }
-
-        // Render MMAP
-        mmapContainer.innerHTML = '';
-        for (let i = 0; i < state.mmapChunks; i++) {
-            const el = document.createElement('div');
-            el.className = 'mmap-chunk';
-            el.textContent = 'mmap';
-            mmapContainer.appendChild(el);
+        if (state.walRecords === 0) {
+             walContainer.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem; font-style:italic;">Empty</span>';
+        } else {
+            for (let i = 0; i < state.walRecords; i++) {
+                const el = document.createElement('div');
+                el.className = 'wal-record';
+                el.textContent = 'WAL Rec';
+                walContainer.appendChild(el);
+            }
         }
 
         // Render Blocks
         blocksContainer.innerHTML = '';
-        for (let i = 0; i < state.blocks; i++) {
-            const el = document.createElement('div');
-            el.className = 'persistent-block';
-            el.innerHTML = `<div>Block ${i+1}</div><div class="size">2h span</div>`;
-            blocksContainer.appendChild(el);
+        if (state.blocks.length === 0) {
+            blocksContainer.innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem; font-style:italic;">No blocks cut yet.</span>';
+        } else {
+            state.blocks.forEach(block => {
+                const el = document.createElement('div');
+                el.className = 'persistent-block';
+                el.innerHTML = `
+                    <div class="ulid">${block.ulid}</div>
+                    <div class="file">📁 chunks/</div>
+                    <div class="file">📄 index</div>
+                    <div class="file">📄 meta.json</div>
+                `;
+                blocksContainer.appendChild(el);
+            });
         }
     }
 
@@ -104,50 +125,43 @@ document.addEventListener('DOMContentLoaded', () => {
         activeChunk.samples++;
         state.walRecords++;
 
-        log(`Appended samples to Head chunk ID:${activeChunk.id}. Written to WAL.`);
+        log(`Scraped metrics. Appended to Head (RAM) and written to WAL (Disk).`);
         renderState();
-
-        // Check for mmap condition
-        if (activeChunk.samples >= CHUNK_MAX_SAMPLES) {
-            log(`Chunk ID:${activeChunk.id} is full. Memory-mapping to disk...`);
-            await delay(500); // UI visual delay
-            if(state.isCrashed) return; // safety
-
-            // Move from head to mmap (in a real TSDB, head holds multiple chunks, but we simplify visually)
-            state.mmapChunks++;
-            // Remove full chunks from RAM to simulate memory clearing
-            state.headChunks = state.headChunks.filter(c => c.samples < CHUNK_MAX_SAMPLES);
-
-            log(`Chunk memory-mapped. RAM freed.`);
-            renderState();
-        }
     });
 
     // 2. Cut Block
     btnCut.addEventListener('click', async () => {
         if (state.isCrashed) return;
 
-        if (state.mmapChunks === 0 && state.headChunks.length === 0) {
-            log("No data to cut into a block.", "warn");
+        if (state.headChunks.length === 0) {
+            log("Head block is empty. No data to cut.", "warn");
             return;
         }
 
         btnScrape.disabled = true;
         btnCut.disabled = true;
 
-        log("2h elapsed. Cutting new persistent block...");
+        log("2h elapsed. Compacting Head Block to disk...");
+        simStatus.textContent = "Compacting...";
+        simStatus.style.color = "var(--warning-color)";
         await delay(1000);
         if(state.isCrashed) return;
 
-        // Take all mmap chunks + flush active head to form a block
-        const chunksCompacted = state.mmapChunks + state.headChunks.length;
+        const newBlock = { ulid: generateULID() };
+        state.blocks.push(newBlock);
 
-        state.blocks++;
-        state.mmapChunks = 0;
+        const oldWalCount = state.walRecords;
+
         state.headChunks = [];
         state.walRecords = 0; // WAL is truncated
+        state.chunkIdCounter = 1;
 
-        log(`Block created with ${chunksCompacted} chunks. WAL truncated.`);
+        log(`Created immutable Block ${newBlock.ulid} (contains index, chunks, meta.json).`);
+        log(`Truncated old WAL (${oldWalCount} records deleted).`);
+
+        simStatus.textContent = "Running";
+        simStatus.style.color = "";
+
         renderState();
 
         btnScrape.disabled = false;
@@ -159,12 +173,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.isCrashed) return;
         state.isCrashed = true;
 
-        log("PROCESS CRASHED! Memory lost.", "error");
+        log("CRITICAL: Process Crashed! Memory lost.", "error");
+        simStatus.textContent = "CRASHED";
+        simStatus.style.color = "var(--danger-color)";
 
         // Lose RAM contents
         state.headChunks = [];
-        // MMAP chunks are strictly on disk, but TSDB needs to rebuild index.
-        // For visual simplicity, we'll keep mmap on disk but clear RAM.
 
         renderState();
 
@@ -179,25 +193,37 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!state.isCrashed) return;
 
         btnRecover.disabled = true;
-        log("Starting TSDB. Replaying WAL...", "info");
+        log("Starting Prometheus TSDB...", "info");
+        simStatus.textContent = "Recovering...";
+        simStatus.style.color = "var(--warning-color)";
 
-        await delay(1000);
+        await delay(800);
 
-        // Replay WAL logic (rebuild head chunks based on WAL records)
-        let recordsToProcess = state.walRecords;
-        let recoveredChunks = [];
+        if (state.walRecords > 0) {
+            log(`Found WAL on disk. Replaying ${state.walRecords} records to rebuild memory state...`, "info");
+            await delay(1200);
 
-        while(recordsToProcess > 0) {
-            let samplesInChunk = Math.min(recordsToProcess, CHUNK_MAX_SAMPLES);
-            recoveredChunks.push({ id: state.chunkIdCounter++, samples: samplesInChunk });
-            recordsToProcess -= samplesInChunk;
+            // Replay WAL logic
+            let recordsToProcess = state.walRecords;
+            let recoveredChunks = [];
+            state.chunkIdCounter = 1;
+
+            while(recordsToProcess > 0) {
+                let samplesInChunk = Math.min(recordsToProcess, CHUNK_MAX_SAMPLES);
+                recoveredChunks.push({ id: state.chunkIdCounter++, samples: samplesInChunk });
+                recordsToProcess -= samplesInChunk;
+            }
+
+            state.headChunks = recoveredChunks;
+            log(`WAL replay complete. Head block fully rebuilt.`);
+        } else {
+             log("No WAL found (or empty). Starting clean.", "info");
         }
 
-        state.headChunks = recoveredChunks;
-
-        log(`WAL replay complete. Recovered ${state.walRecords} records into memory.`);
-
         state.isCrashed = false;
+        simStatus.textContent = "Running";
+        simStatus.style.color = "";
+
         renderState();
 
         btnScrape.disabled = false;
