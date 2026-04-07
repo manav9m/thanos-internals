@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.ThanosApp && window.ThanosApp.state.isCompleted(labId)) {
         btnMarkComplete.textContent = "✓ Completed";
         btnMarkComplete.disabled = true;
-        btnMarkComplete.classList.remove('primary');
+        btnMarkComplete.classList.remove('primary-btn');
     }
 
     btnMarkComplete.addEventListener('click', () => {
@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window.ThanosApp.markLabComplete(labId);
             btnMarkComplete.textContent = "✓ Completed";
             btnMarkComplete.disabled = true;
-            btnMarkComplete.classList.remove('primary');
+            btnMarkComplete.classList.remove('primary-btn');
         }
     });
 
@@ -50,7 +50,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function log(msg, type="info") {
         const div = document.createElement('div');
         div.style.color = type === "error" ? "#f85149" : (type === "warn" ? "#d29922" : "#0f0");
-        div.textContent = `level=${type} msg="${msg}"`;
+        const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+        div.textContent = `[${timestamp}] level=${type} msg="${msg}"`;
         logPanel.appendChild(div);
         logPanel.scrollTop = logPanel.scrollHeight;
     }
@@ -60,8 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Define Blocks in Object Storage
     const blocks = [
-        { id: 'b1', name: 'Block A', age: '1d ago', timeOffset: 1, element: null },
-        { id: 'b2', name: 'Block B', age: '3w ago', timeOffset: 21, element: null },
+        { id: 'b1', name: 'Recent Block A', age: '1d ago', timeOffset: 1, element: null },
+        { id: 'b2', name: 'Historical Block B', age: '3w ago', timeOffset: 21, element: null },
     ];
 
     // Caches state
@@ -72,6 +73,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize UI
     function init() {
+        log("Starting Thanos Store Gateway...", "info");
+        log("Scanning Object Storage bucket for TSDB blocks...", "info");
+
         blocks.forEach(block => {
             // Create Block element in bucket
             const el = document.createElement('div');
@@ -86,14 +90,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Create Query button
             const btn = document.createElement('button');
-            btn.className = 'primary';
-            btn.style.flex = '1';
+            btn.className = 'btn primary-btn';
             btn.textContent = `Query ${block.name}`;
             btn.addEventListener('click', () => simulateQuery(block));
             blockButtonsContainer.appendChild(btn);
         });
 
-        log("Store Gateway loaded index-headers from Object Storage to local disk.");
+        setTimeout(() => {
+            log("Downloaded meta.json and Index Headers to local disk.", "info");
+            flashElement(simIndexHeader, 'active', 1000);
+            log("Store Gateway ready. Serving StoreAPI.", "info");
+        }, 800);
     }
 
     // Animation Helper
@@ -146,34 +153,35 @@ document.addEventListener('DOMContentLoaded', () => {
         btns.forEach(b => b.disabled = true);
         btnClearCache.disabled = true;
 
-        log(`--- Incoming StoreAPI Query for ${block.name} ---`, "info");
+        log(`--- Incoming StoreAPI Query for time range targeting ${block.name} ---`, "info");
         arrowGrpc.classList.add('active');
 
         try {
-            // 1. Time Partitioning Check
+            // Step 0: Time Partitioning Check (Metadata Filter equivalent)
             if (flagTimePartition.checked) {
                 // simulated rule: --min-time=-2w --max-time=now
                 if (block.timeOffset > 14) {
-                    log(`Query dropped: ${block.name} (${block.age}) is outside configured time range (--min-time=-2w)`, "warn");
-                    await wait(800);
-                    return; // exit early
+                    log(`Query ignored: Metadata filter determines ${block.name} (${block.age}) is outside configured --min-time=-2w`, "warn");
+                    await wait(1000);
+                    return; // exit early, Store returns nothing
                 }
             }
 
-            // 2. Index Header Lookup (Local Disk)
-            log(`Checking local Index Header for ${block.name} offsets...`);
+            // Step 1: Index Header Lookup (Local Disk)
+            log(`Step 1: Reading local Index Header to find offsets for ${block.name}...`);
             flashElement(simIndexHeader, 'active');
-            await wait(600);
+            await wait(800);
 
-            // 3. Index Cache Lookup
+            // Step 2: Index Cache Lookup
             let indexHit = false;
+            log(`Step 2: Checking Index Cache for Postings/Series...`);
             if (flagIndexCache.checked) {
                 if (cacheState.index.has(block.id)) {
                     indexHit = true;
-                    log(`Index Cache HIT for ${block.name} (Postings/Series)`, "info");
+                    log(`[Hit] Index Cache found series data.`, "info");
                     flashElement(simIndexCache, 'hit');
                 } else {
-                    log(`Index Cache MISS for ${block.name}`, "warn");
+                    log(`[Miss] Index Cache miss. Fetching index bytes...`, "warn");
                     flashElement(simIndexCache, 'miss');
                     // Add to cache
                     cacheState.index.add(block.id);
@@ -181,42 +189,55 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 log("Index Cache disabled. Skipping.", "warn");
             }
-            await wait(600);
+            await wait(800);
 
-            // 4. Chunk Cache Lookup
+            // Fetch missing index from ObjStore if needed
+            if (!indexHit && flagIndexCache.checked) {
+                log(`Sending HTTP Byte-Range Request to Object Storage for Index bytes...`, "info");
+                arrowHttp.classList.add('active');
+                await animatePacket(nodeStore, nodeObj, 'var(--warning-color)');
+                block.element.classList.add('fetching');
+                await wait(600);
+                block.element.classList.remove('fetching');
+                await animatePacket(nodeObj, nodeStore, 'var(--success-color)');
+                arrowHttp.classList.remove('active');
+            }
+
+            // Step 3: Chunk Cache Lookup
             let chunkHit = false;
+            log(`Step 3: Checking Chunk Cache for raw sample data...`);
             if (flagChunkCache.checked) {
                 if (cacheState.chunk.has(block.id)) {
                     chunkHit = true;
-                    log(`Chunk Cache HIT for ${block.name} (Sample Data)`, "info");
+                    log(`[Hit] Chunk Cache found sample data.`, "info");
                     flashElement(simChunkCache, 'hit');
                 } else {
-                    log(`Chunk Cache MISS for ${block.name}`, "warn");
+                    log(`[Miss] Chunk Cache miss. Fetching chunk bytes...`, "warn");
                     flashElement(simChunkCache, 'miss');
                     cacheState.chunk.add(block.id);
                 }
             } else {
                 log("Chunk Cache disabled. Skipping.", "warn");
             }
-            await wait(600);
+            await wait(800);
 
-            // 5. Fetch from Object Storage if needed
-            if (!indexHit || !chunkHit) {
-                log(`Sending HTTP Byte-Range request to Object Storage for ${block.name}...`, "info");
+            // Step 4: Fetch missing chunks from Object Storage using HTTP Range Requests
+            if (!chunkHit) {
+                log(`Step 4: Sending HTTP Byte-Range Request to Object Storage for Chunk bytes...`, "info");
                 arrowHttp.classList.add('active');
 
                 await animatePacket(nodeStore, nodeObj, 'var(--warning-color)');
                 block.element.classList.add('fetching');
                 await wait(800);
 
-                log(`Fetched missing data bytes from Object Storage.`, "info");
+                log(`Fetched exact chunk bytes from Object Storage.`, "info");
                 block.element.classList.remove('fetching');
                 await animatePacket(nodeObj, nodeStore, 'var(--success-color)');
             } else {
-                log(`All required data served from internal caches! No request to Object Storage.`, "info");
+                log(`Sample data served from local Chunk Cache! No Object Storage egress required.`, "info");
             }
 
-            log(`Successfully served StoreAPI Query for ${block.name}.`, "info");
+            log(`Successfully served StoreAPI Query to Querier.`, "info");
 
         } finally {
             // Cleanup
@@ -226,6 +247,12 @@ document.addEventListener('DOMContentLoaded', () => {
             btnClearCache.disabled = false;
             isSimulating = false;
             log(`--- Query Complete ---`, "info");
+
+            // Add spacing between logs
+            const spacer = document.createElement('div');
+            spacer.style.height = "10px";
+            logPanel.appendChild(spacer);
+            logPanel.scrollTop = logPanel.scrollHeight;
         }
     }
 
@@ -233,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnClearCache.addEventListener('click', () => {
         cacheState.index.clear();
         cacheState.chunk.clear();
-        log("Caches cleared manually.", "warn");
+        log("Caches cleared manually (Simulating Store Gateway restart without persistent caches).", "warn");
 
         flashElement(simIndexCache, 'miss', 400);
         flashElement(simChunkCache, 'miss', 400);

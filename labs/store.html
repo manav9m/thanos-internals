@@ -12,7 +12,7 @@
             gap: 15px;
             background: #111;
             padding: 20px;
-            overflow-y: auto;
+            overflow-x: auto;
             position: relative;
         }
 
@@ -214,6 +214,37 @@
         .data-packet.animating {
             opacity: 1;
         }
+
+        /* Control Styles */
+        .panel-header {
+            font-weight: 600;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .control-group {
+            margin-bottom: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .control-help {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin: 0;
+            line-height: 1.4;
+        }
+        .toggle-control {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+        }
+        .toggle-control input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--primary-color);
+        }
     </style>
 </head>
 <body>
@@ -223,158 +254,157 @@
             <span class="subtitle">Module: Store Gateway</span>
         </div>
         <div class="progress-tracker">
-            <button id="mark-complete-btn" class="primary">Mark Lab Complete</button>
+            <button id="mark-complete-btn" class="primary-btn">Mark Lab Complete</button>
         </div>
     </header>
 
-    <main style="padding: 1rem;">
-        <div class="lab-container">
-            <div class="lab-sidebar">
-                <h2>Thanos Store Gateway</h2>
-                <p>The Thanos Store Gateway implements the Store API on top of historical data in an object storage bucket. It acts primarily as an API gateway, providing Queriers with access to long-term storage without requiring vast amounts of local disk space.</p>
+    <main class="lab-container">
+        <div class="lab-sidebar">
+            <h2>Thanos Store Gateway</h2>
+            <p>While the Thanos Sidecar handles real-time queries for recent data on local disk, long-term durable metrics reside in Object Storage (e.g., AWS S3, GCS). Querying full TSDB blocks directly from Object Storage is slow and massively inefficient.</p>
+            <p><strong>What problem does the Store Gateway solve?</strong> It acts as an API layer over object storage, <em>not</em> a database itself. It implements the gRPC StoreAPI (the exact same API as the Sidecar), allowing Thanos Query to seamlessly read historical data without downloading the entire database.</p>
 
-                <h3>Deep Internal Working</h3>
-                <p>When an incoming query requests historical data, the Store Gateway executes the following flow:</p>
-                <ol>
-                    <li><strong>Index Header Lookup:</strong> On startup, Store downloads tiny pieces of each block's index (the `index-header`) to local disk. It maps the query labels to find which blocks contain the data.</li>
-                    <li><strong>Index Cache:</strong> It checks the Index Cache (In-Memory, Memcached, or Redis) for Postings and Series metadata to quickly pinpoint the exact byte offsets inside the remote block.</li>
-                    <li><strong>Chunk Cache:</strong> It checks the Caching Bucket for the raw sample data (Chunks).</li>
-                    <li><strong>Byte-Range Request:</strong> If the chunk is not cached, Store issues a highly optimized HTTP byte-range request to Object Storage, fetching <em>only</em> the needed bytes (not the whole block!).</li>
-                </ol>
+            <h3>Core Behavior & Mental Model</h3>
+            <ul>
+                <li><strong>Object Storage:</strong> Holds the raw, massive historical data.</li>
+                <li><strong>Store Gateway:</strong> The "smart reader." It does <strong>not</strong> download full data. It fetches only the exact bytes required to answer a specific query.</li>
+                <li><strong>Query:</strong> The orchestrator. It does not differentiate between Sidecar (recent) and Store (historical).</li>
+            </ul>
 
-                <h3>Guided Examples</h3>
-                <div class="example-box">
-                    <h4>Example 1: The First Query (Cache Miss)</h4>
-                    <p><strong>Goal:</strong> See how Store Gateway fetches data from Object Storage.</p>
-                    <ol>
-                        <li>Click <strong>"Query Historical Block"</strong>.</li>
-                        <li><strong>Observation:</strong> The caches will flash red (miss). The Store Gateway calculates offsets and sends a byte-range request to Object Storage.</li>
-                    </ol>
-                </div>
+            <h3>Startup Sync Behavior</h3>
+            <p>When the Store Gateway starts, it must build a local understanding of what exists in remote storage:</p>
+            <ol>
+                <li>Scans the object storage bucket for TSDB blocks.</li>
+                <li>Downloads the <code>meta.json</code> (labels, time bounds) and <strong>index headers</strong> (a small subset of the block's index) to local disk.</li>
+                <li>Uses minimal local disk space (a few MB per block) to "advertise" available data to Queriers.</li>
+            </ol>
+            <p>Periodically, it re-scans the bucket to detect new blocks uploaded by Sidecars or old blocks deleted by Compactors.</p>
 
-                <div class="example-box">
-                    <h4>Example 2: Repeated Queries (Cache Hit)</h4>
-                    <p><strong>Goal:</strong> Observe caching performance.</p>
-                    <ol>
-                        <li>Click <strong>"Query Historical Block"</strong> again for the same block.</li>
-                        <li><strong>Observation:</strong> The caches flash green (hit). No request is sent to Object Storage, resulting in much faster query times and lower egress costs.</li>
-                    </ol>
-                </div>
+            <h3>Internal Data Flow (The Query Path)</h3>
+            <p>This is the critical path for reading historical data:</p>
+            <div style="background: rgba(255,255,255,0.05); padding: 10px; border-left: 4px solid var(--primary-color); font-family: monospace; font-size: 0.9em; margin-bottom: 1rem;">
+                Query → Store Gateway → Metadata Filter → Index Lookup → Chunk Fetch
+            </div>
+            <ol>
+                <li><strong>Step 1: Metadata Filter:</strong> Store looks at local `meta.json` to identify which blocks match the query's time range.</li>
+                <li><strong>Step 2: Index Lookup:</strong> It uses the local index headers (and Index Cache) to find exactly where matching series live inside the remote block.</li>
+                <li><strong>Step 3: Chunk Fetch:</strong> If data isn't in the Chunk Cache, Store performs highly optimized <strong>HTTP Range Requests</strong> to Object Storage to fetch <em>only</em> the required chunk bytes.</li>
+            </ol>
 
-                <div class="example-box">
-                    <h4>Example 3: Time-Based Partitioning</h4>
-                    <p><strong>Goal:</strong> See how Store nodes can be sharded.</p>
-                    <ol>
-                        <li>Toggle the <code>--min-time</code> and <code>--max-time</code> flag.</li>
-                        <li>Attempt to query a block outside the configured time range.</li>
-                        <li><strong>Observation:</strong> The Store Gateway simply ignores the query, allowing you to run multiple Store nodes handling different time periods.</li>
-                    </ol>
-                </div>
+            <h3>Caching Layers</h3>
+            <p>To reduce latency and costly egress from Object Storage, Store Gateway employs caching:</p>
+            <ul>
+                <li><strong>Index Cache:</strong> Caches Postings and Series lookups.</li>
+                <li><strong>Chunk Cache:</strong> Caches actual sample data fetched from remote chunks.</li>
+            </ul>
 
-                <h3>Failure Modes</h3>
-                <ul>
-                    <li><strong>OOM (Out of Memory):</strong> High cardinality queries can cause Store Gateway to load massive amounts of series/postings into memory. Proper index-cache sizing is critical.</li>
-                    <li><strong>High Latency:</strong> If caches are too small or disabled, Store makes constant requests to Object Storage. Object Storage latency translates directly to query latency.</li>
-                    <li><strong>Corrupt Index Header:</strong> If local index-headers are corrupted or disk is lost, Store must re-download them on startup, delaying readiness.</li>
-                </ul>
+            <h3>Failure Modes & Operational Realities</h3>
+            <ul>
+                <li>❌ <strong>Myth:</strong> Store Gateway downloads all data. (Reality: It only fetches specific bytes during queries).</li>
+                <li>❌ <strong>Myth:</strong> It acts as local long-term storage. (Reality: It has no data of its own, local disk can be deleted and rebuilt).</li>
+                <li><strong>Store Gateway Down:</strong> Historical data is unavailable, but recent data via Sidecar still works.</li>
+                <li><strong>Object Storage Slow:</strong> Direct impact on query latency for historical queries.</li>
+            </ul>
 
+            <div class="reference-links">
                 <h3>References</h3>
                 <ul>
-                    <li><a href="https://thanos.io/tip/components/store.md/" target="_blank">Thanos Store Official Documentation</a></li>
+                    <li><a href="https://thanos.io/tip/components/store.md/" target="_blank">Thanos Store Gateway Official Documentation</a></li>
                 </ul>
             </div>
+        </div>
 
-            <div class="lab-main">
-                <div class="simulation-panel">
-                    <div class="simulation-header">
-                        <strong>Visual Simulation: Store Gateway Architecture</strong>
-                    </div>
+        <div class="lab-main">
+            <div class="simulation-panel">
+                <div class="panel-header">Interactive Simulation: Store Gateway Data Flow</div>
 
-                    <div class="architecture-diagram">
-                        <div class="arch-node node-query" id="arch-query">Thanos Querier</div>
-                        <div class="flow-arrow arrow-grpc" id="arrow-grpc">⇄</div>
-                        <div class="arch-node node-store" id="arch-store">Thanos Store Gateway</div>
-                        <div class="flow-arrow arrow-http" id="arrow-http">⇄</div>
-                        <div class="arch-node node-obj" id="arch-obj">Object Storage</div>
-                    </div>
+                <div class="architecture-diagram">
+                    <div class="arch-node node-query" id="arch-query">Thanos Querier</div>
+                    <div class="flow-arrow arrow-grpc" id="arrow-grpc">⇄</div>
+                    <div class="arch-node node-store" id="arch-store">Store Gateway</div>
+                    <div class="flow-arrow arrow-http" id="arrow-http">⇄</div>
+                    <div class="arch-node node-obj" id="arch-obj">Object Storage</div>
+                </div>
 
-                    <div class="simulation-canvas" id="sim-canvas">
-                        <div id="packet" class="data-packet"></div>
+                <div class="simulation-canvas" id="sim-canvas">
+                    <div id="packet" class="data-packet"></div>
 
-                        <div class="region-container">
-                            <div class="store-region" style="border-color: var(--primary-color);">
-                                <span class="region-label" style="color: var(--primary-color);">Store Gateway Internals</span>
+                    <div class="region-container">
+                        <div class="store-region" style="border-color: var(--primary-color);">
+                            <span class="region-label" style="color: var(--primary-color);">Store Gateway Internals</span>
 
-                                <div style="display:flex; gap: 10px; width: 100%;">
-                                    <div class="disk-box" id="sim-index-header" style="flex:1;">
-                                        <strong>Local Disk</strong><br>
-                                        <small>Index Headers</small>
-                                    </div>
-                                    <div class="cache-box" id="sim-index-cache" style="flex:1;">
-                                        <strong>Index Cache</strong><br>
-                                        <small>Postings & Series</small>
-                                    </div>
-                                    <div class="cache-box" id="sim-chunk-cache" style="flex:1;">
-                                        <strong>Chunk Cache</strong><br>
-                                        <small>Sample Data</small>
-                                    </div>
+                            <div style="display:flex; gap: 10px; width: 100%;">
+                                <div class="disk-box" id="sim-index-header" style="flex:1;">
+                                    <strong>Local Disk</strong><br>
+                                    <small>meta.json & Index Headers</small>
+                                </div>
+                                <div class="cache-box" id="sim-index-cache" style="flex:1;">
+                                    <strong>Index Cache</strong><br>
+                                    <small>Postings & Series</small>
+                                </div>
+                                <div class="cache-box" id="sim-chunk-cache" style="flex:1;">
+                                    <strong>Chunk Cache</strong><br>
+                                    <small>Sample Data Chunks</small>
                                 </div>
                             </div>
                         </div>
+                    </div>
 
-                        <div class="region-container" style="margin-top: 10px;">
-                            <div class="store-region" style="border-color: var(--warning-color);">
-                                <span class="region-label" style="color: var(--warning-color);">Object Storage (Bucket)</span>
-                                <div id="bucket-blocks" style="display:flex; gap: 10px; flex-wrap: wrap; width: 100%;">
-                                    <!-- Blocks will be injected here via JS -->
-                                </div>
+                    <div class="region-container" style="margin-top: 10px;">
+                        <div class="store-region" style="border-color: var(--warning-color);">
+                            <span class="region-label" style="color: var(--warning-color);">Object Storage (Bucket)</span>
+                            <div id="bucket-blocks" style="display:flex; gap: 10px; flex-wrap: wrap; width: 100%;">
+                                <!-- Blocks will be injected here via JS -->
                             </div>
                         </div>
-
                     </div>
-                    <div class="log-panel" id="log-panel">
-                        <div>level=info msg="Starting store node"</div>
+
+                </div>
+                <div class="log-panel" id="log-panel">
+                    <!-- Logs injected here -->
+                </div>
+            </div>
+
+            <div class="controls-panel">
+                <div class="panel-header">Data Pipeline Controls</div>
+
+                <div class="control-group">
+                    <label>1. Execute Query</label>
+                    <div class="flex gap-1" id="block-buttons" style="flex-direction: column; gap: 0.5rem;">
+                        <!-- Query buttons injected via JS -->
                     </div>
                 </div>
 
-                <div class="controls-panel">
-                    <h3 style="margin-top:0;">Controls & Actions</h3>
+                <div class="control-group" style="margin-top: 1.5rem;">
+                    <label>2. Manage State</label>
+                    <button id="btn-clear-cache" class="btn warning-btn" style="width: 100%;">Clear Caches</button>
+                    <p class="control-help">Purges Index and Chunk caches to simulate a cold start.</p>
+                </div>
 
-                    <div class="form-group flex gap-1 mb-1" id="block-buttons" style="flex-wrap: wrap;">
-                        <!-- Query buttons injected via JS -->
-                    </div>
+                <div class="panel-header" style="margin-top: 2rem;">Store Configuration Flags</div>
 
-                    <div class="form-group flex gap-1 mb-1">
-                        <button id="btn-clear-cache" style="flex: 1;">Clear Caches</button>
-                    </div>
+                <div class="control-group">
+                    <label class="toggle-control">
+                        <input type="checkbox" id="flag-index-cache" checked>
+                        <code>--index-cache-size=250MB</code>
+                    </label>
+                    <p class="control-help">Caches index lookups (Postings/Series) to reduce metadata fetches.</p>
+                </div>
 
-                    <hr class="mb-1" style="border-color: var(--border-color);">
+                <div class="control-group">
+                    <label class="toggle-control">
+                        <input type="checkbox" id="flag-chunk-cache" checked>
+                        <code>--store.caching-bucket.config="..."</code>
+                    </label>
+                    <p class="control-help">Caches fetched chunk sample data to prevent repeated S3 egress.</p>
+                </div>
 
-                    <h3 style="margin-top:10px;">Configuration Flags</h3>
-
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="flag-index-cache" checked>
-                            <code>--index-cache-size=250MB</code>
-                        </label>
-                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Enables in-memory caching of Postings and Series.</p>
-                    </div>
-
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="flag-chunk-cache" checked>
-                            <code>--store.caching-bucket.config="..."</code>
-                        </label>
-                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Enables caching of chunk sample data.</p>
-                    </div>
-
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="flag-time-partition">
-                            <code>--min-time=-2w --max-time=now</code>
-                        </label>
-                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Restricts Store to only serve blocks from the last 2 weeks.</p>
-                    </div>
+                <div class="control-group">
+                    <label class="toggle-control">
+                        <input type="checkbox" id="flag-time-partition">
+                        <code>--min-time=-2w --max-time=now</code>
+                    </label>
+                    <p class="control-help">Time partitioning. Restricts Store to only serve blocks from the last 2 weeks. Used for horizontal scaling.</p>
                 </div>
             </div>
         </div>
