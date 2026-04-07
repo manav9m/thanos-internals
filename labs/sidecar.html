@@ -225,6 +225,55 @@
             display: inline-block;
         }
 
+        /* Control Panel Specific Adjustments */
+        .panel-header {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: var(--primary-color);
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .control-help {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 5px;
+            line-height: 1.4;
+        }
+
+        .toggle-control {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            gap: 10px;
+        }
+
+        .toggle-control input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .toggle-control span {
+            font-size: 0.9rem;
+            font-weight: normal;
+        }
+
+        .mt-2 { margin-top: 20px; }
+        .w-100 { width: 100%; }
+
         @media (max-width: 900px) {
             .architecture-diagram {
                 flex-direction: column;
@@ -327,7 +376,7 @@
 
             <!-- Simulation Side -->
             <div class="lab-main">
-                <div class="visualization-panel">
+                <div class="simulation-panel">
                     <div class="panel-header">Interactive Simulation: Sidecar Data Flow</div>
 
                     <div class="architecture-diagram">
