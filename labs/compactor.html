@@ -4,136 +4,365 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Compactor Lab - Thanos Internals</title>
+    <meta name="description" content="Interactive browser simulation teaching how the Thanos Compactor works: compaction, downsampling, retention, and block lifecycle.">
     <link rel="stylesheet" href="../css/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        .simulation-canvas {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            padding: 20px;
-            background: var(--bg-secondary);
-            border-radius: 4px;
-            overflow-x: auto;
-        }
+/* ═══════════════════════════════════════════════════════
+   STATUS BAR (Compactor Phase Pipeline)
+   ═══════════════════════════════════════════════════════ */
+#status-bar {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    overflow-x: auto;
+    white-space: nowrap;
+    margin-bottom: 12px;
+}
 
-        .bucket-area {
-            border: 2px dashed var(--border-color);
-            border-radius: 8px;
-            padding: 15px;
-            position: relative;
-            min-height: 120px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            align-content: flex-start;
-        }
+.phase-step {
+    padding: 4px 12px;
+    border-radius: 20px;
+    background: var(--highlight-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    transition: all 0.25s ease;
+    flex-shrink: 0;
+    font-size: 0.75rem;
+}
+.phase-step.active {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(88,166,255,0.4);
+    animation: pulseSoft 1.5s infinite;
+}
+.phase-step.done {
+    background: rgba(46,160,67,0.15);
+    border-color: var(--success-color);
+    color: var(--success-color);
+}
+.phase-arrow { color: var(--text-muted); flex-shrink: 0; font-size: 0.7rem; }
 
-        .bucket-label {
-            position: absolute;
-            top: -10px;
-            left: 15px;
-            background: var(--bg-secondary);
-            padding: 0 10px;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            font-weight: bold;
-        }
+@keyframes pulseSoft {
+    0%, 100% { box-shadow: 0 0 8px rgba(88,166,255,0.3); }
+    50% { box-shadow: 0 0 18px rgba(88,166,255,0.5); }
+}
 
-        .ts-block {
-            background-color: var(--highlight-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            padding: 8px;
-            width: 100px;
-            text-align: center;
-            font-size: 0.8rem;
-            position: relative;
-            transition: all 0.4s ease;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
+/* ═══════════════════════════════════════════════════════
+   OBJECT STORAGE LANES
+   ═══════════════════════════════════════════════════════ */
+.storage-lanes {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.lane {
+    background: var(--bg-secondary);
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    padding: 10px 14px;
+    min-height: 90px;
+    position: relative;
+    overflow: hidden;
+}
+.lane-header {
+    font-weight: 600;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.lane-header .lane-badge {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+}
+.lane-badge-raw { background: rgba(88,166,255,0.15); color: var(--primary-color); border: 1px solid rgba(88,166,255,0.3); }
+.lane-badge-5m { background: rgba(210,153,34,0.15); color: var(--warning-color); border: 1px solid rgba(210,153,34,0.3); }
+.lane-badge-1h { background: rgba(137,87,229,0.15); color: #8957e5; border: 1px solid rgba(137,87,229,0.3); }
 
-        .ts-block .ext-label {
-            font-size: 0.65rem;
-            color: var(--text-muted);
-            margin-bottom: 4px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
+.lane-blocks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-content: flex-start;
+}
 
-        .ts-block .duration {
-            font-weight: bold;
-            font-size: 0.9rem;
-            color: #fff;
-        }
+.lane-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(13,17,23,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.9rem;
+    border-radius: 8px;
+    z-index: 5;
+    backdrop-filter: blur(2px);
+    display: none;
+}
+.lane-overlay.visible { display: flex; }
 
-        .ts-block .res {
-            font-size: 0.7rem;
-            margin-top: 4px;
-            padding: 2px 4px;
-            border-radius: 2px;
-        }
+/* ═══════════════════════════════════════════════════════
+   BLOCK CARDS
+   ═══════════════════════════════════════════════════════ */
+.block-card {
+    background: var(--highlight-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 8px 10px;
+    width: 120px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    transition: all 0.25s ease;
+    position: relative;
+    animation: blockFadeIn 0.4s ease;
+}
+@keyframes blockFadeIn {
+    from { opacity: 0; transform: translateY(-12px) scale(0.92); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
 
-        .ts-block.res-raw { border-left: 3px solid var(--primary-color); }
-        .ts-block.res-raw .res { background: rgba(56, 139, 253, 0.2); color: var(--primary-color); }
+.block-card .bc-labels { color: var(--text-muted); font-size: 0.65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
+.block-card .bc-time { font-weight: 700; font-size: 0.95rem; color: #fff; margin-bottom: 3px; }
+.block-card .bc-meta { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.block-card .bc-badge { padding: 1px 6px; border-radius: 8px; font-size: 0.62rem; font-weight: 700; }
+.block-card .bc-age { color: var(--text-muted); font-size: 0.62rem; margin-top: 3px; }
 
-        .ts-block.res-5m { border-left: 3px solid var(--warning-color); }
-        .ts-block.res-5m .res { background: rgba(210, 153, 34, 0.2); color: var(--warning-color); }
+/* Level colors */
+.block-card.level-1 { border-left: 3px solid var(--primary-color); }
+.block-card.level-1 .bc-badge.lvl { background: rgba(88,166,255,0.2); color: var(--primary-color); }
+.block-card.level-2 { border-left: 3px solid var(--success-color); }
+.block-card.level-2 .bc-badge.lvl { background: rgba(46,160,67,0.2); color: var(--success-color); }
+.block-card.level-3 { border-left: 3px solid var(--warning-color); }
+.block-card.level-3 .bc-badge.lvl { background: rgba(210,153,34,0.2); color: var(--warning-color); }
+.block-card.level-4 { border-left: 3px solid var(--danger-color); }
+.block-card.level-4 .bc-badge.lvl { background: rgba(248,81,73,0.2); color: var(--danger-color); }
+.block-card.res-5m { border-left: 3px solid var(--warning-color); }
+.block-card.res-5m .bc-badge.res { background: rgba(210,153,34,0.2); color: var(--warning-color); }
+.block-card.res-1h { border-left: 3px solid #8957e5; }
+.block-card.res-1h .bc-badge.res { background: rgba(137,87,229,0.2); color: #8957e5; }
 
-        .ts-block.res-1h { border-left: 3px solid var(--danger-color); }
-        .ts-block.res-1h .res { background: rgba(248, 81, 73, 0.2); color: var(--danger-color); }
+.block-card.compacting {
+    box-shadow: 0 0 16px rgba(46,160,67,0.4);
+    border-color: var(--success-color);
+    animation: compactPulse 0.8s infinite;
+}
+@keyframes compactPulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(46,160,67,0.3); transform: scale(1); }
+    50% { box-shadow: 0 0 20px rgba(46,160,67,0.5); transform: scale(1.03); }
+}
+.block-card.eligible-5m { box-shadow: 0 0 10px rgba(210,153,34,0.4); }
+.block-card.eligible-1h { box-shadow: 0 0 10px rgba(137,87,229,0.4); }
+.block-card.deletion-marked {
+    opacity: 0.5;
+    background: repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(248,81,73,0.08) 4px, rgba(248,81,73,0.08) 8px);
+    border-color: var(--danger-color);
+}
+.block-card.deletion-marked .bc-deletion { color: var(--danger-color); font-size: 0.62rem; margin-top: 3px; }
+.block-card.deleting { opacity: 0.15; transform: scale(0.8); transition: all 0.6s ease; }
 
-        .ts-block.compacting {
-            border-color: var(--success-color);
-            box-shadow: 0 0 15px rgba(46, 160, 67, 0.6);
-            transform: translateY(-5px);
-            z-index: 10;
-        }
+/* ═══════════════════════════════════════════════════════
+   SIMULATION CONTROLS (right panel overrides)
+   ═══════════════════════════════════════════════════════ */
+.sim-section { margin-bottom: 16px; }
+.sim-section h4 { font-size: 0.9rem; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
 
-        .ts-block.deleting {
-            opacity: 0.3;
-            transform: scale(0.8);
-            border-color: var(--danger-color);
-        }
+.ctrl-btn {
+    display: block;
+    width: 100%;
+    padding: 8px 14px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    margin-bottom: 6px;
+    border: 1px solid var(--border-color);
+    text-align: left;
+    background: var(--panel-bg);
+    color: var(--text-main);
+}
+.ctrl-btn:hover { filter: brightness(1.1); }
+.ctrl-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ctrl-btn.blue { background: var(--primary-color); color: #fff; border-color: var(--primary-color); }
+.ctrl-btn.teal { background: rgba(57,210,192,0.12); color: #39d2c0; border-color: rgba(57,210,192,0.3); }
+.ctrl-btn.red { background: var(--danger-color); color: #fff; border-color: var(--danger-color); }
 
-        .compactor-node {
-            background: #1e1e1e;
-            border: 2px solid var(--success-color);
-            border-radius: 8px;
-            padding: 15px;
-            text-align: center;
-            position: relative;
-            margin: 10px 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
+.cfg-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.cfg-row label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.cfg-row select, .cfg-row input[type="number"] {
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    width: 120px;
+    flex-shrink: 0;
+}
 
-        .compactor-node .status {
-            font-family: monospace;
-            color: var(--success-color);
-            margin-top: 5px;
-            font-size: 0.9rem;
-        }
+.toggle-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.toggle-wrap label { font-size: 0.78rem; color: var(--text-muted); }
+.toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle .slider {
+    position: absolute; inset: 0;
+    background: var(--border-color);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: 0.25s ease;
+}
+.toggle .slider::before {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    left: 3px; bottom: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: 0.25s ease;
+}
+.toggle input:checked + .slider { background: var(--success-color); }
+.toggle input:checked + .slider::before { transform: translateX(16px); }
 
-        .log-panel {
-            background: #0d1117;
-            color: #56d364;
-            font-family: monospace;
-            padding: 15px;
-            height: 200px;
-            overflow-y: auto;
-            border-radius: 6px;
-            border: 1px solid var(--border-color);
-            font-size: 0.85rem;
-            line-height: 1.4;
-        }
+.warning-banner {
+    background: rgba(210,153,34,0.1);
+    border: 1px solid rgba(210,153,34,0.4);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 0.75rem;
+    color: var(--warning-color);
+    margin-bottom: 8px;
+    display: none;
+    line-height: 1.4;
+}
+.warning-banner.visible { display: block; }
 
-        .log-panel div { margin-bottom: 4px; }
-        .log-panel .err { color: #f85149; }
-        .log-panel .warn { color: #d29922; }
+.error-alert {
+    background: rgba(248,81,73,0.1);
+    border: 1px solid var(--danger-color);
+    border-radius: 6px;
+    padding: 12px 14px;
+    color: var(--danger-color);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    display: none;
+    margin-bottom: 12px;
+}
+.error-alert.visible { display: block; }
 
+/* Time slider */
+.time-slider-wrap { margin-bottom: 10px; }
+.time-slider-wrap .ts-label { display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-muted); margin-bottom: 4px; }
+.time-slider-wrap input[type="range"] { width: 100%; accent-color: var(--primary-color); cursor: pointer; }
+
+/* Compactor log panel */
+.compactor-log {
+    background: #0d1117;
+    color: #56d364;
+    font-family: 'JetBrains Mono', monospace;
+    padding: 12px;
+    height: 180px;
+    overflow-y: auto;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
+.compactor-log .log-line { margin-bottom: 1px; }
+.compactor-log .log-info { color: #b1bac4; }
+.compactor-log .log-warn { color: var(--warning-color); }
+.compactor-log .log-err { color: var(--danger-color); }
+.compactor-log .log-success { color: var(--success-color); }
+
+/* CLI flags panel */
+.cli-panel {
+    background: #0d1117;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 12px;
+    position: relative;
+    margin-top: 10px;
+}
+.cli-panel .cli-title { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+.cli-panel pre { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: #39d2c0; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+.cli-panel .copy-btn {
+    position: absolute; top: 8px; right: 10px;
+    background: var(--panel-bg); border: 1px solid var(--border-color);
+    color: var(--text-muted); font-size: 0.68rem; padding: 3px 8px;
+    border-radius: 4px; cursor: pointer;
+}
+.cli-panel .copy-btn:hover { color: var(--text-main); border-color: var(--primary-color); }
+
+/* Lifecycle diagram */
+.lifecycle-diagram {
+    background: var(--highlight-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 14px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.8;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+.lifecycle-diagram .ld-title { font-family: inherit; font-weight: 700; font-size: 0.85rem; color: var(--text-main); margin-bottom: 6px; }
+.lifecycle-diagram .ld-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 3px; }
+.lifecycle-diagram .ld-box { padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--panel-bg); white-space: nowrap; }
+.lifecycle-diagram .ld-arrow { color: var(--text-muted); }
+.ld-box.ld-blue { border-color: var(--primary-color); color: var(--primary-color); }
+.ld-box.ld-green { border-color: var(--success-color); color: var(--success-color); }
+.ld-box.ld-gold { border-color: var(--warning-color); color: var(--warning-color); }
+.ld-box.ld-purple { border-color: #8957e5; color: #8957e5; }
+.ld-box.ld-red { border-color: var(--danger-color); color: var(--danger-color); }
+
+/* Mental model box (from original) */
+.mental-model-box {
+    background: var(--highlight-bg);
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--success-color);
+    border-radius: 4px;
+    padding: 12px;
+    margin: 1rem 0;
+}
+.mental-model-box h4 { margin-bottom: 0.5rem; }
+
+/* Scenario exercise boxes */
+.scenario-box {
+    background: rgba(255,255,255,0.05);
+    padding: 12px;
+    border-radius: 4px;
+    margin-bottom: 0.75rem;
+}
+.scenario-box h4 { margin-bottom: 0.3rem; font-size: 0.95rem; }
+.scenario-box p { font-size: 0.9rem; margin-bottom: 0; }
     </style>
 </head>
 <body>
@@ -148,11 +377,14 @@
     </header>
 
     <main class="lab-container">
-        <!-- Theory / Documentation Sidebar -->
+
+        <!-- ═══════════════════════════════════════════════════════
+             THEORY & DOCUMENTATION SIDEBAR
+             ═══════════════════════════════════════════════════════ -->
         <div class="lab-sidebar">
             <h2>Thanos Compactor</h2>
             <p>
-                In a distributed TSDB system, thousands of small data blocks are continuously uploaded to Object Storage by Thanos Sidecars.
+                In a distributed TSDB system, thousands of small 2-hour data blocks are continuously uploaded to Object Storage by Thanos Sidecars.
                 Without intervention, querying this data becomes impossibly slow due to massive metadata overhead, huge index lookups, and millions of tiny files.
             </p>
             <p>
@@ -163,9 +395,9 @@
             <div class="mental-model-box">
                 <h4>🧠 Mental Model</h4>
                 <ul>
-                    <li><strong>Sidecar:</strong> Writes blocks to Object Storage.</li>
-                    <li><strong>Store Gateway:</strong> Reads blocks from Object Storage.</li>
-                    <li><strong>Compactor:</strong> Cleans, merges, and optimizes blocks in Object Storage.</li>
+                    <li><strong>Sidecar:</strong> Writes 2-hour raw blocks to Object Storage.</li>
+                    <li><strong>Store Gateway:</strong> Reads blocks from Object Storage for queries.</li>
+                    <li><strong>Compactor:</strong> Cleans, merges, downsamples, and garbage-collects blocks in Object Storage.</li>
                 </ul>
             </div>
 
@@ -177,119 +409,369 @@
             <p>
                 The Compactor is <strong>not concurrency-safe</strong>. It must run as the <em>ONLY ONE</em> instance per Object Storage bucket.
                 Running multiple compactors will lead to overlapping compactions, duplicate data, corrupted index files, and broken data consistency.
+                It MUST be deployed with <code>replicas: 1</code>. Two concurrent Compactors can both attempt to compact the same group,
+                both uploading different output blocks and both deleting the source blocks — causing permanent data loss.
             </p>
 
-            <h4>2. Block Grouping & Merging</h4>
+            <h4>2. Block Grouping by External Labels</h4>
             <p>
                 The Compactor scans Object Storage and groups blocks based on their <strong>External Labels</strong> (which identify the source Prometheus instance).
-                Blocks from the same Prometheus instance (same labels) that are adjacent in time are merged from smaller blocks (e.g., 2h) into larger, highly optimized blocks (e.g., 8h, 2d, 14d).
-                <em>Wrong or missing external labels lead to broken compactions!</em>
+                Blocks from the same Prometheus instance (same label set) that are adjacent in time are merged.
+                Blocks with <code>{cluster="eu-west"}</code> are <strong>only ever merged</strong> with other <code>{cluster="eu-west"}</code> blocks.
+                Blocks with different labels are <strong>never</strong> merged together. This ensures data from different clusters/replicas is never incorrectly combined.
+            </p>
+            <p><em>Wrong or missing external labels lead to broken compactions!</em></p>
+
+            <h4>3. Compaction Ranges (Prometheus TSDB Engine Rules)</h4>
+            <p>Compaction merges blocks by following the Prometheus TSDB compaction range ladder. Each level targets a specific time range:</p>
+            <div style="background: rgba(255,255,255,0.05); padding: 10px; border-left: 4px solid var(--primary-color); font-family: monospace; font-size: 0.9em; margin-bottom: 1rem;">
+                Level 1: <strong>2h</strong> (raw from Sidecar)<br>
+                Level 2: <strong>6h</strong> (compact 3× 2h blocks)<br>
+                Level 3: <strong>24h</strong> (compact 4× 6h blocks)<br>
+                Level 4: <strong>48h</strong> (compact 2× 24h blocks)<br>
+                Level 5+: <strong>96h → 192h → 336h (14d)</strong> (continuing ×2 doubling)
+            </div>
+            <p>
+                A block qualifies for the next range when enough blocks exist to fill the target window. The planner groups blocks within each range
+                and merges them into a new, larger block. Source blocks are deleted (after <code>--delete-delay</code>).
             </p>
 
-            <h4>3. Downsampling</h4>
+            <h4>4. Downsampling</h4>
             <p>
-                Downsampling creates lower-resolution aggregations of old data (5m and 1h intervals).
-                <strong>Crucially: Downsampling is NOT primarily for saving storage.</strong> It exists for <em>faster long-range queries</em>.
-                Querying 1 year of raw data requires scanning huge amounts of data. Querying downsampled data is fast.
-                Downsampled blocks are stored <em>alongside</em> raw data, they do not replace it.
+                Downsampling is a <strong>separate pass</strong> run AFTER compaction completes. It does NOT replace raw blocks — it creates <strong>additional</strong> blocks alongside them.
+            </p>
+            <ul>
+                <li><strong>5m downsampling:</strong> created for raw blocks whose <code>minTime</code> is <strong>older than 40 hours</strong>. The 5m block stores <code>AggrChunk</code> with sub-fields: <code>count</code>, <code>sum</code>, <code>min</code>, <code>max</code>, <code>counter</code> per 5-minute interval.</li>
+                <li><strong>1h downsampling:</strong> created for <strong>5m-downsampled blocks</strong> whose <code>minTime</code> is <strong>older than 10 days (240 hours)</strong>. The 1h block is created FROM the 5m block, not from raw.</li>
+            </ul>
+            <p>
+                <strong>Crucially: Downsampling is NOT primarily for saving storage.</strong> Each downsampled series stores 5 aggregations (count, sum, min, max, counter),
+                so a dataset with 1M series becomes 5M series at 5m resolution. The real benefit is <strong>query speed</strong> for long time ranges (months/years).
+                Downsampled blocks are stored <em>alongside</em> raw data — they do not replace it. Deleting raw requires configuring <code>--retention.resolution-raw</code>.
             </p>
 
-            <h4>4. Retention & Deletion</h4>
+            <h4>5. Retention & Two-Phase Deletion</h4>
             <p>
-                The Compactor is the <strong>only</strong> component in Thanos that deletes data. It enforces configured retention policies (e.g., delete raw data after 30 days) and physically removes the blocks from Object Storage.
+                Retention is applied AFTER compaction and downsampling loops, never before. Retention flags:
+            </p>
+            <ul>
+                <li><code>--retention.resolution-raw=0d</code> — <code>0d</code> means <strong>keep forever</strong> (disabled retention)</li>
+                <li><code>--retention.resolution-5m=0d</code></li>
+                <li><code>--retention.resolution-1h=0d</code></li>
+            </ul>
+            <p>
+                A block is deleted only when its <strong>maxTime</strong> (not minTime) is older than the retention duration.
+                Deletion is two-phase: first a <code>deletion-mark.json</code> is written inside the block directory, then after <code>--delete-delay</code> (default 48h)
+                the block is physically removed. This gives Store Gateway time to stop serving the block before it disappears.
+            </p>
+
+            <h4>6. Consistency Delay</h4>
+            <p>
+                <code>--consistency-delay=30m</code> (default): Fresh blocks younger than 30 minutes are ignored by the Compactor.
+                This prevents compacting partially-uploaded blocks from Sidecars. The upload is not instantaneous — a block may appear in the bucket
+                before all its files are fully written. Set this to 0 only if you control all block producers.
             </p>
 
             <hr>
 
             <h3>Failure Modes & Operational Realities</h3>
             <ul>
-                <li><strong>Compactor Down:</strong> The system (ingestion & querying) continues working perfectly. However, over time, Object Storage fills with unoptimized small blocks, causing query latency to degrade.</li>
-                <li><strong>Halted Compaction:</strong> If the Compactor hits malformed blocks or downsampling errors, it halts to protect data safety (leaving a <code>compaction.err.json</code>). A backlog builds up.</li>
-                <li><strong>Out of Memory (OOM):</strong> Merging large blocks requires loading massive indexes into memory. Compactor must be provisioned with sufficient RAM and local disk space.</li>
+                <li><strong>Compactor Down:</strong> The system (ingestion & querying) continues working perfectly. However, over time, Object Storage fills with unoptimized small blocks, causing query latency to degrade progressively.</li>
+                <li><strong>Halted Compaction:</strong> If the Compactor hits malformed blocks or downsampling errors, it halts to protect data safety (leaving a <code>compaction.err.json</code>). A backlog builds up until the issue is resolved.</li>
+                <li><strong>Out of Memory (OOM):</strong> Merging large blocks requires loading massive indexes into memory. Compactor must be provisioned with sufficient RAM and local disk space for the data directory.</li>
+                <li><strong>Anti-pattern — Raw retention too short:</strong> If <code>--retention.resolution-raw</code> is set shorter than 40h <em>and</em> downsampling is enabled, raw blocks may be deleted before the 5m downsampled blocks are ever created. You will permanently lose sub-5m resolution data. Always keep raw retention ≥ 40h minimum.</li>
             </ul>
 
-            <div class="mental-model-box" style="margin-top: 1rem; border-color: var(--primary-color);">
+            <div class="mental-model-box" style="border-color: var(--primary-color);">
                 <h4>🔗 System Flow</h4>
                 <p>Sidecar &rarr; Object Storage &rarr; <strong>Compactor</strong> (Optimizes) &rarr; Store Gateway &rarr; Query</p>
-                <p><em>Next up: How Query uses all these optimized components together.</em></p>
+                <p><em>The Compactor is the ONLY component in Thanos that writes AND deletes data in Object Storage.</em></p>
+            </div>
+
+            <hr>
+
+            <h3>Hands-On Scenario Exercises</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem;">Use the interactive simulation below to explore each scenario. Follow the steps and observe the behavior in the storage lanes and log panel.</p>
+
+            <div class="scenario-box" style="border-left: 3px solid var(--primary-color);">
+                <h4>Scenario 1: Basic Compaction</h4>
+                <p>Click <strong>"Upload 2h Raw Block"</strong> 3 times to add three blocks with <code>cluster=eu-west</code>. Then click <strong>"Trigger Compaction Cycle"</strong>.
+                Watch the three L1 (2h) blocks merge into one L2 (6h) block following the Prometheus range ladder: 2h × 3 → 6h.</p>
+            </div>
+
+            <div class="scenario-box" style="border-left: 3px solid var(--success-color);">
+                <h4>Scenario 2: Label-Based Grouping</h4>
+                <p>Upload 3 blocks with <strong>"Upload 2h Raw Block"</strong> (eu-west) and 1 block with <strong>"Upload Block (Different Labels)"</strong> (us-east).
+                Run compaction. Notice that the eu-west blocks merge together but the us-east block stays separate — blocks with different labels are <em>never</em> merged.</p>
+            </div>
+
+            <div class="scenario-box" style="border-left: 3px solid var(--warning-color);">
+                <h4>Scenario 3: Downsampling in Action</h4>
+                <p>Upload several raw blocks. Move the <strong>Simulated Time</strong> slider past <strong>40 hours</strong>. Run compaction. Observe 5m downsampled blocks
+                appearing in Lane 2 — blocks older than 40h get a 5m downsample. Move time past <strong>10 days (240h)</strong>, run again, and watch 1h blocks appear in Lane 3
+                (created FROM the 5m blocks, not raw).</p>
+            </div>
+
+            <div class="scenario-box" style="border-left: 3px solid var(--danger-color);">
+                <h4>Scenario 4: Retention & Two-Phase Deletion</h4>
+                <p>Set <code>--retention.resolution-raw</code> to <strong>7d</strong>. Upload blocks and advance simulated time past 7 days.
+                Run compaction. Observe blocks getting <code>deletion-mark.json</code> badges first, then being physically removed after the <code>--delete-delay</code>.
+                Try setting raw retention to <strong>2d</strong> with downsampling enabled — notice the anti-pattern warning.</p>
+            </div>
+
+            <div class="scenario-box" style="border-left: 3px solid var(--danger-color);">
+                <h4>Scenario 5: Singleton Violation</h4>
+                <p>Click <strong>"Simulate Multiple Compactors"</strong>. Observe the fatal error — the Compactor halts immediately because it detects
+                another instance against the same bucket. This demonstrates why Compactor MUST be deployed with <code>replicas: 1</code>. Click <strong>"Reset Storage Bucket"</strong> to recover.</p>
+            </div>
+
+            <div class="scenario-box" style="border-left: 3px solid #8957e5;">
+                <h4>Scenario 6: Replica Blocks & Separate Groups</h4>
+                <p>Upload blocks with <strong>"Upload 2h Raw Block"</strong> (replica=0) and then <strong>"Upload Replica Block"</strong> (replica=1).
+                These blocks have the same cluster label but different replica labels, forming <strong>separate compaction groups</strong>.
+                Run compaction and observe they are grouped and processed independently.</p>
             </div>
 
             <h3>References</h3>
             <ul>
                 <li><a href="https://thanos.io/tip/components/compact.md/" target="_blank">Thanos Compactor Official Documentation</a></li>
+                <li><a href="https://thanos.io/tip/operating/troubleshooting.md/" target="_blank">Thanos Troubleshooting Guide</a></li>
             </ul>
         </div>
 
-        <!-- Interactive Simulation Area -->
+        <!-- ═══════════════════════════════════════════════════════
+             INTERACTIVE SIMULATION AREA
+             ═══════════════════════════════════════════════════════ -->
         <div class="lab-main">
             <div class="simulation-panel">
-                <div class="panel-header">
-                    <strong>Interactive Simulation: Compaction Lifecycle</strong>
+                <div class="panel-header"><strong>Interactive Simulation: Compaction Lifecycle</strong></div>
+
+                <div class="simulation-canvas" style="display: flex; flex-direction: column; gap: 12px; padding: 16px; flex: 1; overflow-y: auto;">
+
+                    <!-- Status Bar -->
+                    <div id="status-bar">
+                        <span class="phase-step" data-phase="idle">Idle</span>
+                        <span class="phase-arrow">→</span>
+                        <span class="phase-step" data-phase="scan">Scanning</span>
+                        <span class="phase-arrow">→</span>
+                        <span class="phase-step" data-phase="plan">Planning</span>
+                        <span class="phase-arrow">→</span>
+                        <span class="phase-step" data-phase="compact">Compacting</span>
+                        <span class="phase-arrow">→</span>
+                        <span class="phase-step" data-phase="ds5m">DS 5m</span>
+                        <span class="phase-arrow">→</span>
+                        <span class="phase-step" data-phase="ds1h">DS 1h</span>
+                        <span class="phase-arrow">→</span>
+                        <span class="phase-step" data-phase="retention">Retention</span>
+                        <span class="phase-arrow">→</span>
+                        <span class="phase-step" data-phase="done">Done</span>
+                    </div>
+
+                    <!-- Error Alert -->
+                    <div class="error-alert" id="singleton-error">
+                        🚫 <strong>FATAL: Multiple compactors detected against the same bucket.</strong> Thanos Compactor is NOT concurrency-safe. Running multiple instances will cause undefined behavior and potential data corruption. It MUST be deployed as a singleton (replicas: 1). Compactor halted. Click <strong>"Reset Storage Bucket"</strong> to recover.
+                    </div>
+
+                    <!-- Lifecycle Diagram -->
+                    <div class="lifecycle-diagram">
+                        <div class="ld-title">📐 Block Lifecycle</div>
+                        <div class="ld-row">
+                            <span class="ld-box">Prometheus TSDB</span>
+                            <span class="ld-arrow">→ every 2h →</span>
+                            <span class="ld-box ld-blue">Sidecar uploads 2h raw block (L1)</span>
+                            <span class="ld-arrow">→ after consistency-delay →</span>
+                            <span class="ld-box">Compactor scans & groups</span>
+                        </div>
+                        <div class="ld-row">
+                            <span class="ld-box ld-blue">L1(2h)×3 → L2(6h)</span>
+                            <span class="ld-arrow">→</span>
+                            <span class="ld-box ld-green">L2(6h)×4 → L3(24h)</span>
+                            <span class="ld-arrow">→</span>
+                            <span class="ld-box" style="border-color:var(--warning-color);color:var(--warning-color)">L3×2 → L4(48h)</span>
+                            <span class="ld-arrow">→ ...</span>
+                        </div>
+                        <div class="ld-row">
+                            <span class="ld-box ld-gold">Age > 40h? → Create 5m downsample</span>
+                            <span class="ld-arrow">→</span>
+                            <span class="ld-box ld-purple">5m age > 10d? → Create 1h from 5m</span>
+                        </div>
+                        <div class="ld-row">
+                            <span class="ld-box ld-red">maxTime > retention? → deletion-mark.json</span>
+                            <span class="ld-arrow">→ after delete-delay →</span>
+                            <span class="ld-box ld-red">Physical deletion</span>
+                        </div>
+                    </div>
+
+                    <!-- Storage Lanes -->
+                    <div class="storage-lanes">
+                        <div class="lane" id="lane-raw">
+                            <div class="lane-header">
+                                <span class="lane-badge lane-badge-raw">RAW</span>
+                                Raw Blocks — Object Storage
+                                <span id="raw-count" style="margin-left:auto;font-family:monospace;font-size:0.72rem;color:var(--text-muted)">0 blocks</span>
+                            </div>
+                            <div class="lane-blocks" id="lane-raw-blocks"></div>
+                        </div>
+                        <div class="lane" id="lane-5m">
+                            <div class="lane-header">
+                                <span class="lane-badge lane-badge-5m">5m</span>
+                                5-Minute Downsampled Blocks
+                                <span id="ds5m-count" style="margin-left:auto;font-family:monospace;font-size:0.72rem;color:var(--text-muted)">0 blocks</span>
+                            </div>
+                            <div class="lane-blocks" id="lane-5m-blocks"></div>
+                            <div class="lane-overlay" id="overlay-5m">⛔ Downsampling Disabled</div>
+                        </div>
+                        <div class="lane" id="lane-1h">
+                            <div class="lane-header">
+                                <span class="lane-badge lane-badge-1h">1h</span>
+                                1-Hour Downsampled Blocks
+                                <span id="ds1h-count" style="margin-left:auto;font-family:monospace;font-size:0.72rem;color:var(--text-muted)">0 blocks</span>
+                            </div>
+                            <div class="lane-blocks" id="lane-1h-blocks"></div>
+                            <div class="lane-overlay" id="overlay-1h">⛔ Downsampling Disabled</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="simulation-canvas">
 
-                    <div class="compactor-node">
-                        <strong>Thanos Compactor</strong>
-                        <div class="status" id="compactor-status">[Idle] Waiting for execution...</div>
-                    </div>
-
-                    <div class="bucket-area" id="bucket-raw">
-                        <span class="bucket-label">Object Storage: Raw Blocks</span>
-                        <!-- Raw blocks injected here -->
-                    </div>
-
-                    <div class="bucket-area" id="bucket-downsampled">
-                        <span class="bucket-label">Object Storage: Downsampled Blocks (5m / 1h)</span>
-                        <!-- Downsampled blocks injected here -->
-                    </div>
-
-                </div>
-                <div class="log-panel" id="log-panel"></div>
+                <!-- Log Panel -->
+                <div class="compactor-log" id="log-panel"></div>
             </div>
 
+            <!-- ═══════ CONTROLS PANEL ═══════ -->
             <div class="controls-panel">
-                <div class="panel-header">
-                    <strong>Configuration & Controls</strong>
-                </div>
+                <div class="panel-header"><strong>Configuration & Controls</strong></div>
 
-                <div class="control-group">
-                    <h4>1. Generate Unoptimized Data</h4>
+                <!-- Section 1: Generate Blocks -->
+                <div class="sim-section">
+                    <h4>🧱 1. Generate Blocks</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Simulate Sidecars uploading small 2h blocks to Object Storage.</p>
-                    <button id="btn-ingest" class="btn primary">Upload 2h Raw Block</button>
-                    <button id="btn-ingest-diff" class="btn">Upload Block (Different Labels)</button>
+                    <button class="ctrl-btn blue" id="btn-upload-raw">Upload 2h Raw Block <span style="float:right;opacity:0.7">cluster=eu-west</span></button>
+                    <button class="ctrl-btn teal" id="btn-upload-diff">Upload Block (Different Labels) <span style="float:right;opacity:0.7">cluster=us-east</span></button>
+                    <button class="ctrl-btn" id="btn-upload-replica">Upload Replica Block <span style="float:right;opacity:0.7">replica=1</span></button>
                 </div>
 
-                <hr style="border-color: var(--border-color); margin: 15px 0;">
+                <hr style="border-color: var(--border-color); margin: 12px 0;">
 
-                <div class="control-group">
-                    <h4>2. Compactor Configuration Flags</h4>
-
-                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; margin-bottom: 10px;">
-                        <input type="checkbox" id="flag-downsampling" checked>
-                        Enable Downsampling
-                    </label>
-                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: -5px; margin-bottom: 10px;">If unchecked, simulates <code>--downsampling.disable</code></p>
-
-                    <label style="display: block; font-size: 0.9rem; margin-bottom: 5px;">Retention: Raw Data</label>
-                    <select id="flag-retention" style="width: 100%; padding: 5px; margin-bottom: 5px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color);">
-                        <option value="0">0 (Keep Forever)</option>
-                        <option value="24">24 hours (1 day)</option>
-                        <option value="168">168 hours (7 days)</option>
-                    </select>
-                    <p style="font-size: 0.75rem; color: var(--text-muted);"><code>--retention.resolution-raw</code></p>
+                <!-- Section: Time Control -->
+                <div class="sim-section">
+                    <h4>⏱ Simulated Time</h4>
+                    <div class="time-slider-wrap">
+                        <div class="ts-label">
+                            <span>Current Time</span>
+                            <span id="time-display" style="font-family:monospace;color:#39d2c0">0h (0d)</span>
+                        </div>
+                        <input type="range" id="time-slider" min="0" max="720" value="0" step="1">
+                        <div class="ts-label" style="margin-top:2px"><span>0h</span><span>30d (720h)</span></div>
+                    </div>
                 </div>
 
-                <hr style="border-color: var(--border-color); margin: 15px 0;">
+                <hr style="border-color: var(--border-color); margin: 12px 0;">
 
-                <div class="control-group">
-                    <h4>3. Execute Run</h4>
+                <!-- Section 2: Compactor Configuration -->
+                <div class="sim-section">
+                    <h4>⚙️ 2. Compactor Configuration Flags</h4>
+
+                    <div class="cfg-row">
+                        <label><code>--consistency-delay</code></label>
+                        <select id="cfg-consistency-delay">
+                            <option value="0">0m</option>
+                            <option value="15">15m</option>
+                            <option value="30" selected>30m (default)</option>
+                            <option value="60">1h</option>
+                        </select>
+                    </div>
+
+                    <div class="toggle-wrap">
+                        <label><code>--downsampling.disable</code></label>
+                        <label class="toggle">
+                            <input type="checkbox" id="cfg-downsampling-disable">
+                            <span class="slider"></span>
+                        </label>
+                        <span style="font-size:0.7rem;color:var(--text-muted)" id="ds-status-label">Enabled</span>
+                    </div>
+
+                    <div class="cfg-row">
+                        <label><code>--retention.resolution-raw</code></label>
+                        <select id="cfg-ret-raw">
+                            <option value="0" selected>0d (Forever)</option>
+                            <option value="48">2d</option>
+                            <option value="168">7d</option>
+                            <option value="360">15d</option>
+                            <option value="720">30d</option>
+                            <option value="2160">90d</option>
+                            <option value="8760">1y</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label><code>--retention.resolution-5m</code></label>
+                        <select id="cfg-ret-5m">
+                            <option value="0" selected>0d (Forever)</option>
+                            <option value="720">30d</option>
+                            <option value="2160">90d</option>
+                            <option value="4320">180d</option>
+                            <option value="8760">1y</option>
+                            <option value="17520">2y</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label><code>--retention.resolution-1h</code></label>
+                        <select id="cfg-ret-1h">
+                            <option value="0" selected>0d (Forever)</option>
+                            <option value="2160">90d</option>
+                            <option value="8760">1y</option>
+                            <option value="17520">2y</option>
+                            <option value="43800">5y</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label><code>--delete-delay</code></label>
+                        <select id="cfg-delete-delay">
+                            <option value="0">0h</option>
+                            <option value="12">12h</option>
+                            <option value="48" selected>48h (default)</option>
+                            <option value="72">72h</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label><code>--wait-interval</code></label>
+                        <select id="cfg-wait-interval">
+                            <option value="1">1m</option>
+                            <option value="5" selected>5m (default)</option>
+                            <option value="15">15m</option>
+                            <option value="30">30m</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label><code>--compact.concurrency</code></label>
+                        <input type="number" id="cfg-compact-conc" min="1" max="5" value="1">
+                    </div>
+                    <div class="cfg-row">
+                        <label><code>--downsample.concurrency</code></label>
+                        <input type="number" id="cfg-ds-conc" min="1" max="5" value="1">
+                    </div>
+
+                    <div class="warning-banner" id="retention-warning">
+                        ⚠️ <strong>Anti-pattern detected:</strong> Raw retention may cause 5m downsampled blocks to never exist before raw blocks are deleted. Thanos docs recommend keeping raw retention ≥ 40h minimum, and ideally equal to or greater than other resolutions.
+                    </div>
+                </div>
+
+                <hr style="border-color: var(--border-color); margin: 12px 0;">
+
+                <!-- Section 3: Execute -->
+                <div class="sim-section">
+                    <h4>🚀 3. Execute Run</h4>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Run the singleton compactor to scan, group, merge, downsample, and delete.</p>
-                    <button id="btn-run" class="btn primary" style="width: 100%;">Trigger Compaction Cycle</button>
-                    <button id="btn-multi" class="btn danger" style="width: 100%; margin-top: 10px;">Simulate Multiple Compactors (Error)</button>
+                    <button class="ctrl-btn blue" id="btn-compact" style="text-align:center">⚡ Trigger Compaction Cycle</button>
+                    <button class="ctrl-btn red" id="btn-multi-error" style="text-align:center">🚫 Simulate Multiple Compactors (Error)</button>
+                    <button class="ctrl-btn" id="btn-reset" style="text-align:center">↺ Reset Storage Bucket</button>
                 </div>
 
-                <button id="btn-reset" class="btn" style="width: 100%; margin-top: 20px;">Reset Storage Bucket</button>
-
+                <!-- CLI Flags -->
+                <div class="cli-panel">
+                    <div class="cli-title">Generated CLI Flags</div>
+                    <button class="copy-btn" id="btn-copy-cli">Copy</button>
+                    <pre id="cli-output"></pre>
+                </div>
             </div>
         </div>
     </main>
