@@ -222,7 +222,7 @@ function updateDsOverlay() {
     overlay5m.classList.toggle('visible', disabled);
     overlay1h.classList.toggle('visible', disabled);
     dsStatusLabel.textContent = disabled ? 'Disabled' : 'Enabled';
-    dsStatusLabel.style.color = disabled ? 'var(--red)' : 'var(--green)';
+    dsStatusLabel.style.color = disabled ? 'var(--danger-color)' : 'var(--success-color)';
 }
 
 // ─── UPLOAD BLOCK ───
@@ -587,11 +587,6 @@ btnCopyCli.addEventListener('click', () => {
         btnCopyCli.textContent = '✓ Copied';
         setTimeout(() => { btnCopyCli.textContent = 'Copy'; }, 1500);
     });
-});
-
-learnToggle.addEventListener('click', () => {
-    learnToggle.classList.toggle('open');
-    learnBody.classList.toggle('open');
 });
 
 timeSlider.addEventListener('input', updateTimeDisplay);
