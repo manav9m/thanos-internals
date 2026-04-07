@@ -1,198 +1,321 @@
 // Compactor Simulation Logic
-
 document.addEventListener('DOMContentLoaded', () => {
-    // --- State ---
-    let blocks = [];
-    let blockIdCounter = 1;
-    let timeSimulated = 0; // in hours
-
-    // --- DOM Elements ---
-    const rawContainer = document.getElementById('raw-blocks');
-    const dsContainer = document.getElementById('downsampled-blocks');
+    // DOM Elements
+    const bucketRaw = document.getElementById('bucket-raw');
+    const bucketDownsampled = document.getElementById('bucket-downsampled');
     const logPanel = document.getElementById('log-panel');
-    const engineStatus = document.getElementById('compactor-status');
+    const statusEl = document.getElementById('compactor-status');
 
-    const btnGenerate = document.getElementById('btn-generate');
-    const btnCompact = document.getElementById('btn-compact');
+    // Buttons
+    const btnIngest = document.getElementById('btn-ingest');
+    const btnIngestDiff = document.getElementById('btn-ingest-diff');
+    const btnRun = document.getElementById('btn-run');
+    const btnMulti = document.getElementById('btn-multi');
     const btnReset = document.getElementById('btn-reset');
 
-    const chkDownsampling = document.getElementById('flag-downsampling');
-    const selRetentionRaw = document.getElementById('flag-retention-raw');
+    // Controls
+    const flagDownsampling = document.getElementById('flag-downsampling');
+    const flagRetention = document.getElementById('flag-retention');
 
-    // --- Gamification Hook ---
-    const btnComplete = document.getElementById('mark-complete-btn');
-    if (window.ThanosApp && window.ThanosApp.state.isCompleted('compactor')) {
-        btnComplete.textContent = "✓ Completed";
-        btnComplete.disabled = true;
-    }
-    btnComplete.addEventListener('click', () => {
-        if (window.ThanosApp) {
-            window.ThanosApp.markLabComplete('compactor');
-            btnComplete.textContent = "✓ Completed";
-            btnComplete.disabled = true;
-        }
-    });
+    // State
+    let blocks = [];
+    let blockCounter = 0;
+    let globalTimeHours = 0; // Simulated time to track age for retention
+    let isRunning = false;
 
-    // --- Utilities ---
-    function log(msg, level = 'info') {
-        const line = document.createElement('div');
-        line.textContent = `level=${level} msg="${msg}"`;
-        if (level === 'warn') line.style.color = 'yellow';
-        if (level === 'error') line.style.color = 'red';
-        logPanel.appendChild(line);
+    // Helper: Logging
+    function log(msg, type = 'info') {
+        const time = new Date().toISOString().substring(11, 19);
+        const div = document.createElement('div');
+        div.className = type;
+        div.textContent = `[${time}] level=${type} msg="${msg}"`;
+        logPanel.appendChild(div);
         logPanel.scrollTop = logPanel.scrollHeight;
     }
 
+    // Helper: Update Status
+    function setStatus(msg, color = 'var(--success-color)') {
+        statusEl.textContent = msg;
+        statusEl.style.color = color;
+    }
+
+    // Helper: Render Blocks
     function renderBlocks() {
-        rawContainer.innerHTML = '';
-        dsContainer.innerHTML = '';
+        // Clear containers
+        const rawTitle = bucketRaw.querySelector('.bucket-label');
+        const downTitle = bucketDownsampled.querySelector('.bucket-label');
+
+        bucketRaw.innerHTML = '';
+        bucketRaw.appendChild(rawTitle);
+
+        bucketDownsampled.innerHTML = '';
+        bucketDownsampled.appendChild(downTitle);
 
         blocks.forEach(b => {
             const el = document.createElement('div');
-            el.className = `ts-block res-${b.res}`;
+            el.className = `ts-block res-${b.res} ${b.animClass || ''}`;
             el.id = `block-${b.id}`;
+
+            const labelStr = `cluster="${b.labels.cluster}"`;
+
             el.innerHTML = `
-                <div>ID: ${b.id}</div>
-                <div class="res">${b.res === 'raw' ? '0s (Raw)' : b.res}</div>
-                <div class="size">${b.duration}h span</div>
+                <div class="ext-label" title="${labelStr}">${labelStr}</div>
+                <div class="duration">${b.duration}h</div>
+                <div class="res">${b.res}</div>
             `;
 
             if (b.res === 'raw') {
-                rawContainer.appendChild(el);
+                bucketRaw.appendChild(el);
             } else {
-                dsContainer.appendChild(el);
+                bucketDownsampled.appendChild(el);
             }
         });
     }
 
-    const delay = ms => new Promise(res => setTimeout(res, ms));
+    // Action: Ingest Block
+    function ingestBlock(clusterLabel) {
+        if (isRunning) return;
 
-    // --- Actions ---
-
-    // 1. Ingest (Simulate Sidecar uploading)
-    btnGenerate.addEventListener('click', () => {
+        blockCounter++;
         const newBlock = {
-            id: blockIdCounter++,
+            id: blockCounter,
             res: 'raw',
-            duration: 2, // 2h block
-            timestamp: timeSimulated
+            duration: 2,
+            labels: { cluster: clusterLabel },
+            createdAt: globalTimeHours, // Age tracking
+            animClass: ''
         };
+
         blocks.push(newBlock);
-        timeSimulated += 2;
-        log(`Uploaded new 2h raw block. ID: ${newBlock.id}`);
+        globalTimeHours += 2; // Advance simulated time
+
+        log(`Sidecar uploaded 2h raw block (ext_labels: cluster=${clusterLabel})`, 'info');
         renderBlocks();
-    });
+        checkCompletion();
+    }
 
-    // 2. Compaction Cycle
-    btnCompact.addEventListener('click', async () => {
-        btnCompact.disabled = true;
-        btnGenerate.disabled = true;
-        engineStatus.textContent = "Scanning bucket...";
-        log("Starting compaction cycle...", "info");
+    // Core: Run Compaction Cycle
+    async function runCompactor() {
+        if (isRunning) return;
+        isRunning = true;
 
-        await delay(1000);
+        btnRun.disabled = true;
+        btnIngest.disabled = true;
+        btnIngestDiff.disabled = true;
 
-        // A. Compaction: Find raw blocks to merge (4 x 2h = 8h)
-        const rawBlocks = blocks.filter(b => b.res === 'raw' && b.duration === 2);
+        setStatus('[Active] Scanning Object Storage...', 'var(--warning-color)');
+        log('Starting compaction cycle. Scanning bucket for blocks...', 'info');
+        await sleep(1000);
 
-        if (rawBlocks.length >= 4) {
-            engineStatus.textContent = "Compacting 2h blocks...";
-            log(`Found ${rawBlocks.length} overlapping 2h blocks. Merging 4 of them into an 8h block...`);
-
-            // Highlight merging blocks
-            for(let i=0; i<4; i++) {
-                document.getElementById(`block-${rawBlocks[i].id}`).classList.add('compacting');
+        // 1. Group by External Labels
+        log('Grouping blocks by external labels...', 'info');
+        const groups = {};
+        blocks.forEach(b => {
+            if (b.res === 'raw') {
+                const key = b.labels.cluster;
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(b);
             }
+        });
 
-            await delay(1500);
+        await sleep(1000);
 
-            // Remove the 4 old blocks
-            const blocksToRemove = rawBlocks.slice(0, 4).map(b => b.id);
-            blocks = blocks.filter(b => !blocksToRemove.includes(b.id));
+        // 2. Compaction (Merging)
+        for (const [cluster, groupBlocks] of Object.entries(groups)) {
+            // If we have 4 or more 2h blocks for a cluster, merge them into an 8h block
+            const smallBlocks = groupBlocks.filter(b => b.duration === 2);
 
-            // Create 1 new 8h block
-            const newBlock = {
-                id: blockIdCounter++,
-                res: 'raw',
-                duration: 8,
-                timestamp: rawBlocks[0].timestamp // keep oldest timestamp
-            };
-            blocks.push(newBlock);
-            log(`Successfully compacted into 8h block ID: ${newBlock.id}`);
-            renderBlocks();
-        } else {
-            log("No compactable groups found (need at least 4x 2h blocks).", "info");
-        }
+            if (smallBlocks.length >= 4) {
+                log(`Found ${smallBlocks.length} overlapping 2h blocks for cluster="${cluster}". Merging...`, 'info');
 
-        await delay(1000);
+                // Animate selection
+                smallBlocks.forEach(b => {
+                    const idx = blocks.findIndex(x => x.id === b.id);
+                    if (idx > -1) blocks[idx].animClass = 'compacting';
+                });
+                renderBlocks();
 
-        // B. Downsampling
-        if (chkDownsampling.checked) {
-            engineStatus.textContent = "Downsampling...";
-            const raw8hBlocks = blocks.filter(b => b.res === 'raw' && b.duration >= 8);
+                setStatus(`[Active] Merging blocks (cluster="${cluster}")...`, 'var(--warning-color)');
+                await sleep(2000);
 
-            for (const b of raw8hBlocks) {
-                // Check if downsampled version already exists
-                const has5m = blocks.some(ds => ds.res === '5m' && ds.timestamp === b.timestamp);
-                if (!has5m && b.duration >= 8) { // Simulate downsampling rule
-                    log(`Downsampling block ID: ${b.id} to 5m resolution...`);
-                    document.getElementById(`block-${b.id}`).classList.add('compacting');
-                    await delay(1000);
-                    blocks.push({
-                        id: blockIdCounter++,
-                        res: '5m',
-                        duration: b.duration,
-                        timestamp: b.timestamp
-                    });
-                    document.getElementById(`block-${b.id}`).classList.remove('compacting');
-                    renderBlocks();
-                }
-            }
-        } else {
-            log("Downsampling skipped (--downsampling.disable is set).", "warn");
-        }
+                // Remove the old blocks
+                const idsToRemove = smallBlocks.map(b => b.id);
+                blocks = blocks.filter(b => !idsToRemove.includes(b.id));
 
-        await delay(1000);
+                // Create merged block
+                blockCounter++;
+                const mergedDuration = smallBlocks.length * 2;
+                // Inherit the oldest creation time to properly simulate age
+                const oldestAge = Math.min(...smallBlocks.map(b => b.createdAt));
 
-        // C. Retention
-        engineStatus.textContent = "Applying Retention...";
-        const retentionLimit = parseInt(selRetentionRaw.value);
-        if (retentionLimit > 0) {
-            const initialCount = blocks.length;
-            // A block is older than retention if current time - block timestamp > retention
-            blocks = blocks.filter(b => {
-                if (b.res !== 'raw') return true; // Only applying to raw in this simulation
-                const age = timeSimulated - b.timestamp;
-                if (age > retentionLimit) {
-                    log(`Deleting raw block ID: ${b.id} (Age: ${age}h exceeds retention ${retentionLimit}h)`, "warn");
-                    return false;
-                }
-                return true;
-            });
-            if (blocks.length !== initialCount) {
+                const mergedBlock = {
+                    id: blockCounter,
+                    res: 'raw',
+                    duration: mergedDuration,
+                    labels: { cluster: cluster },
+                    createdAt: oldestAge,
+                    animClass: 'compacting'
+                };
+
+                blocks.push(mergedBlock);
+                renderBlocks();
+                log(`Successfully merged into ${mergedDuration}h raw block.`, 'info');
+
+                await sleep(1000);
+                mergedBlock.animClass = '';
                 renderBlocks();
             } else {
-                log("No blocks exceed retention limits.");
+                log(`Not enough blocks for compaction on cluster="${cluster}" (Found ${smallBlocks.length}, need 4).`, 'info');
             }
-        } else {
-            log("Retention disabled (--retention.resolution-raw=0s).");
         }
 
-        engineStatus.textContent = "Idle";
-        log("Compaction cycle finished.");
-        btnCompact.disabled = false;
-        btnGenerate.disabled = false;
+        // 3. Downsampling
+        if (flagDownsampling.checked) {
+            setStatus('[Active] Evaluating downsampling requirements...', 'var(--warning-color)');
+            log('Checking for blocks eligible for downsampling...', 'info');
+            await sleep(1500);
+
+            let downsampledCount = 0;
+            // Downsample blocks that are 8h or larger and don't have downsampled equivalents
+            const largeBlocks = blocks.filter(b => b.res === 'raw' && b.duration >= 8);
+
+            for (const b of largeBlocks) {
+                // Check if 5m already exists for this exact time range
+                const has5m = blocks.some(db => db.res === '5m' && db.createdAt === b.createdAt && db.labels.cluster === b.labels.cluster);
+                if (!has5m) {
+                    log(`Generating 5m downsampled block for 8h raw data (cluster="${b.labels.cluster}")...`, 'info');
+
+                    const idx = blocks.findIndex(x => x.id === b.id);
+                    blocks[idx].animClass = 'compacting';
+                    renderBlocks();
+
+                    await sleep(1500);
+
+                    blockCounter++;
+                    blocks.push({
+                        id: blockCounter,
+                        res: '5m',
+                        duration: b.duration,
+                        labels: { ...b.labels },
+                        createdAt: b.createdAt,
+                        animClass: 'compacting'
+                    });
+
+                    blocks[idx].animClass = '';
+                    renderBlocks();
+
+                    await sleep(500);
+                    blocks[blocks.length-1].animClass = '';
+                    downsampledCount++;
+                }
+            }
+            if (downsampledCount === 0) {
+                log('No blocks require downsampling at this time.', 'info');
+            } else {
+                renderBlocks();
+            }
+        } else {
+            log('Downsampling skipped (--downsampling.disable is set).', 'warn');
+        }
+
+        // 4. Retention & Deletion
+        const retentionRawHours = parseInt(flagRetention.value, 10);
+        if (retentionRawHours > 0) {
+            setStatus('[Active] Enforcing retention policies...', 'var(--warning-color)');
+            log(`Checking raw blocks against ${retentionRawHours}h retention policy...`, 'info');
+            await sleep(1000);
+
+            const toDelete = blocks.filter(b => b.res === 'raw' && (globalTimeHours - b.createdAt) > retentionRawHours);
+
+            if (toDelete.length > 0) {
+                log(`Found ${toDelete.length} raw blocks older than retention limit. Proceeding with deletion.`, 'warn');
+
+                toDelete.forEach(b => {
+                    const idx = blocks.findIndex(x => x.id === b.id);
+                    blocks[idx].animClass = 'deleting';
+                });
+                renderBlocks();
+
+                await sleep(1500);
+
+                const deleteIds = toDelete.map(b => b.id);
+                blocks = blocks.filter(b => !deleteIds.includes(b.id));
+                log('Old blocks permanently deleted from Object Storage.', 'info');
+                renderBlocks();
+            } else {
+                log('No blocks exceed retention limits.', 'info');
+            }
+        }
+
+        setStatus('[Idle] Waiting for execution...', 'var(--success-color)');
+        log('Compaction cycle complete.', 'info');
+
+        btnRun.disabled = false;
+        btnIngest.disabled = false;
+        btnIngestDiff.disabled = false;
+        isRunning = false;
+        checkCompletion();
+    }
+
+    // Helper: Delay
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // Event Listeners
+    btnIngest.addEventListener('click', () => ingestBlock('eu-west-1'));
+    btnIngestDiff.addEventListener('click', () => ingestBlock('us-east-2'));
+
+    btnRun.addEventListener('click', () => {
+        runCompactor();
     });
 
-    // 3. Reset
+    btnMulti.addEventListener('click', () => {
+        if (isRunning) return;
+        log('FATAL: Attempting to start second Compactor instance!', 'err');
+        log('FATAL: lock acquisition failed: bucket is already locked by another Compactor. Halting.', 'err');
+        setStatus('[ERROR] Singleton lock failed', 'var(--danger-color)');
+    });
+
     btnReset.addEventListener('click', () => {
+        if (isRunning) return;
         blocks = [];
-        blockIdCounter = 1;
-        timeSimulated = 0;
-        logPanel.innerHTML = '<div>level=info msg="Compactor simulator ready"</div>';
+        globalTimeHours = 0;
+        blockCounter = 0;
+        log('Storage bucket reset.', 'info');
+        setStatus('[Idle] Waiting for execution...', 'var(--success-color)');
         renderBlocks();
     });
 
-    // Initial render
+    // Gamification Integration
+    function checkCompletion() {
+        const hasMerged = blocks.some(b => b.duration >= 8 && b.res === 'raw');
+        const hasDownsampled = blocks.some(b => b.res === '5m');
+
+        if (hasMerged && hasDownsampled && window.ThanosApp) {
+            document.getElementById('mark-complete-btn').classList.add('pulse');
+        }
+    }
+
+    if (window.ThanosApp) {
+        const completeBtn = document.getElementById('mark-complete-btn');
+        completeBtn.addEventListener('click', () => {
+            window.ThanosApp.markLabComplete('compactor');
+            completeBtn.textContent = 'Completed ✓';
+            completeBtn.classList.remove('primary', 'pulse');
+            completeBtn.classList.add('success');
+            completeBtn.disabled = true;
+        });
+
+        if (window.ThanosApp.state.completedLabs.includes('compactor')) {
+            completeBtn.textContent = 'Completed ✓';
+            completeBtn.classList.remove('primary');
+            completeBtn.classList.add('success');
+            completeBtn.disabled = true;
+        }
+    }
+
+    // Init
+    log('Compactor node initialized and observing bucket.', 'info');
     renderBlocks();
 });
