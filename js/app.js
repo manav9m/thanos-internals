@@ -10,7 +10,6 @@ const LABS = [
     { id: 'receive', title: 'Receive', description: 'Remote Write API implementation and local buffering.', url: 'labs/receive.html' },
     { id: 'downsampling', title: 'Downsampling', description: 'Detailed dive into 5m and 1h resolution creation.', url: 'labs/downsampling.html' },
     { id: 'retention', title: 'Retention & Deletion', description: 'How tombstones and retention policies are applied.', url: 'labs/retention.html' },
-    { id: 'object-storage', title: 'Object Storage', description: 'Bucket formats, layout, and meta.json.', url: 'labs/object-storage.html' },
 ];
 
 class AppState {
