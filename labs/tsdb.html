@@ -115,6 +115,55 @@
         .simulation-canvas {
             flex: 1;
         }
+
+        /* Deep dive link banner */
+        .deep-dive-link {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 18px;
+            margin: 12px 0 16px;
+            background: linear-gradient(135deg, rgba(88, 166, 255, 0.08), rgba(88, 166, 255, 0.03));
+            border: 1px solid rgba(88, 166, 255, 0.25);
+            border-radius: 10px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.25s ease;
+        }
+        .deep-dive-link:hover {
+            background: linear-gradient(135deg, rgba(88, 166, 255, 0.15), rgba(88, 166, 255, 0.06));
+            border-color: var(--primary-color);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(88, 166, 255, 0.1);
+        }
+        .deep-dive-icon {
+            font-size: 1.6rem;
+            flex-shrink: 0;
+        }
+        .deep-dive-content {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            flex: 1;
+        }
+        .deep-dive-content strong {
+            color: var(--primary-color);
+            font-size: 0.95rem;
+        }
+        .deep-dive-content span:last-child {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+        .deep-dive-arrow {
+            font-size: 1.3rem;
+            color: var(--primary-color);
+            flex-shrink: 0;
+            transition: transform 0.25s ease;
+        }
+        .deep-dive-link:hover .deep-dive-arrow {
+            transform: translateX(4px);
+        }
     </style>
 </head>
 <body>
@@ -132,6 +181,16 @@
         <div class="lab-container">
             <div class="lab-sidebar">
                 <h2>Prometheus TSDB Architecture</h2>
+
+                <a href="tsdb/index.html" class="deep-dive-link">
+                    <span class="deep-dive-icon">📘</span>
+                    <span class="deep-dive-content">
+                        <strong>TSDB Index Deep Dive</strong>
+                        <span>Want to go deeper? Explore the full interactive TSDB Index Track — learn how Prometheus resolves label queries to exact chunk byte offsets.</span>
+                    </span>
+                    <span class="deep-dive-arrow">→</span>
+                </a>
+
                 <p><strong>What is TSDB?</strong> Prometheus uses a highly optimized Time-Series Database (TSDB) to store metrics. Before understanding Thanos, you <em>must</em> understand exactly how Prometheus stores data locally, because Thanos is designed to integrate directly with this exact storage format.</p>
                 <p><strong>Goal of this lab:</strong> By the end, you will understand how incoming metrics flow from memory into the Write-Ahead Log (WAL), are held in the Head Block, and are eventually compacted into immutable, persistent TSDB Blocks on disk.</p>
 

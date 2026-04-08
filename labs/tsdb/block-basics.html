@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TSDB Track: Block Basics</title>
+  <link rel="stylesheet" href="tsdb.css">
+</head>
+<body data-page="block">
+  <header class="site-header">
+    <div class="shell">
+      <div class="header-row">
+        <div class="brand">
+          <h1 id="page-title">Lab 1: Block Basics</h1>
+          <p>Learn what a TSDB block contains before touching the index internals.</p>
+        </div>
+        <a class="home-link" href="../../index.html">Back to all labs</a>
+      </div>
+      <div class="progress-bar" style="margin-top:16px"><div id="track-progress-fill" class="progress-fill"></div></div>
+      <div id="track-progress-copy" class="progress-copy"></div>
+      <nav id="track-nav" class="track-nav"></nav>
+    </div>
+  </header>
+
+  <main class="shell page-grid">
+    <section class="hero">
+      <div class="eyebrow">One folder, four things</div>
+      <h2>Start with the block directory</h2>
+      <p>A persistent Prometheus block is a folder named by a ULID. Inside it, you will always find <code>chunks/</code>, <code>index</code>, <code>meta.json</code>, and <code>tombstones</code>.</p>
+      <div class="tree">01EM6Q6A1YPX4G9TEB20J22B2R/
+|- chunks/
+|  |- 000001
+|  '- 000002
+|- index
+|- meta.json
+'- tombstones</div>
+    </section>
+
+    <section class="grid-2">
+      <article class="card">
+        <h2>Click each block file</h2>
+        <p class="muted">This is the simplest possible question on this page: what does each file do?</p>
+        <div class="folder-grid">
+          <div id="file-list" class="file-list"></div>
+          <div id="file-detail" class="detail-panel"></div>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>What to remember from this page</h2>
+        <div class="checklist">
+          <div class="check-item"><strong>The index is the lookup map.</strong> This whole track is mainly about that file.</div>
+          <div class="check-item"><strong>Chunk files store compressed samples.</strong> They do not store labels for every sample.</div>
+          <div class="check-item"><strong>meta.json gives block metadata.</strong> It tells you the block identity and time range.</div>
+          <div class="check-item"><strong>tombstones record deletions.</strong> Queries still need to respect them.</div>
+        </div>
+        <div class="note" style="margin-top:14px">
+          <strong>Why this page comes first</strong>
+          <div class="hint" style="margin-top:6px">If you do not know the job of each file, the later byte-offset labs feel random. This page gives the storage map first.</div>
+        </div>
+      </article>
+    </section>
+
+    <div class="footer-nav">
+      <a id="prev-link" class="btn ghost" href="index.html">Previous</a>
+      <div class="button-row">
+        <button id="page-complete" class="btn ok">Mark this page complete</button>
+        <a id="next-link" class="btn primary" href="toc-lab.html">Next</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="../../js/app.js"></script>
+  <script src="tsdb-data.js"></script>
+  <script src="tsdb-common.js"></script>
+  <script src="block-basics.js"></script>
+</body>
+</html>

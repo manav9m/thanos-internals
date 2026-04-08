@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TSDB Track: Start Here</title>
+  <link rel="stylesheet" href="tsdb.css">
+</head>
+<body data-page="intro">
+  <header class="site-header">
+    <div class="shell">
+      <div class="header-row">
+        <div class="brand">
+          <h1>Prometheus TSDB Index Track</h1>
+          <p>Learn from scratch how Prometheus uses its block index to answer label queries and jump to chunk bytes.</p>
+        </div>
+        <a class="home-link" href="../../index.html">Back to all labs</a>
+      </div>
+      <div class="progress-bar" style="margin-top:16px"><div id="track-progress-fill" class="progress-fill"></div></div>
+      <div id="track-progress-copy" class="progress-copy"></div>
+      <nav id="track-nav" class="track-nav"></nav>
+    </div>
+  </header>
+
+  <main class="shell page-grid">
+    <section class="hero">
+      <div class="eyebrow">Start from zero</div>
+      <h2>What is this topic?</h2>
+      <p>Prometheus stores metrics in <strong>blocks</strong>. Inside each block, the <strong>index</strong> file acts like a map. It helps Prometheus answer a query such as <code>{job="api-server", env="prod"}</code> without scanning every chunk file from start to finish.</p>
+      <p>The goal of this track is simple: understand how Prometheus starts at the <strong>last 52 bytes of the index file</strong> and ends up reading the <strong>exact byte offset of the right chunk</strong>.</p>
+      <div class="button-row">
+        <a class="btn primary" href="block-basics.html">Start Lab 1</a>
+        <button id="page-complete" class="btn ok">Mark this page complete</button>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <article class="card">
+        <h2>Why this matters</h2>
+        <div class="path-list">
+          <div class="path-item">
+            <div class="path-num">1</div>
+            <div>
+              <strong>Queries need a fast lookup path</strong>
+              <div class="hint">The index is what turns label matchers into a small set of candidate series.</div>
+            </div>
+          </div>
+          <div class="path-item">
+            <div class="path-num">2</div>
+            <div>
+              <strong>Chunk bytes are expensive compared to metadata</strong>
+              <div class="hint">Prometheus stores chunk time ranges in the index so it can skip chunk files until it really needs them.</div>
+            </div>
+          </div>
+          <div class="path-item">
+            <div class="path-num">3</div>
+            <div>
+              <strong>Thanos depends on the same ideas</strong>
+              <div class="hint">Store Gateway, compaction, and remote reads all depend on understanding block and index structure.</div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>What you will learn</h2>
+        <div id="example-facts" class="grid-2"></div>
+        <div class="note" style="margin-top:14px">
+          <strong>Important:</strong>
+          <div id="example-note" class="hint" style="margin-top:6px"></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>Quick glossary</h2>
+      <p class="muted">You do not need prior database knowledge. Learn these words first, then move into the focused labs.</p>
+      <dl id="glossary-list" class="glossary grid-2"></dl>
+    </section>
+
+    <section class="card">
+      <h2>The learning path</h2>
+      <p class="muted">Open the labs in order. Each page focuses on one idea only.</p>
+      <div id="track-cards" class="grid-3"></div>
+    </section>
+
+    <section class="card">
+      <h2>Recommended first run</h2>
+      <div class="checklist">
+        <div class="check-item"><strong>First:</strong> open <a href="block-basics.html">Lab 1: Block Basics</a> and learn what lives inside a block folder.</div>
+        <div class="check-item"><strong>Then:</strong> open <a href="toc-lab.html">Lab 2: TOC Navigation</a> and learn why the last 52 bytes matter.</div>
+        <div class="check-item"><strong>After that:</strong> open <a href="postings-lab.html">Lab 3: Postings</a> and <a href="query-path-lab.html">Lab 4: Query Path</a> to see how matchers become series IDs.</div>
+      </div>
+    </section>
+
+    <div class="footer-nav">
+      <span></span>
+      <a id="next-link" class="btn primary" href="block-basics.html">Next</a>
+    </div>
+  </main>
+
+  <script src="../../js/app.js"></script>
+  <script src="tsdb-data.js"></script>
+  <script src="tsdb-common.js"></script>
+  <script src="intro.js"></script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TSDB Track: TOC Navigation</title>
+  <link rel="stylesheet" href="tsdb.css">
+</head>
+<body data-page="toc">
+  <header class="site-header">
+    <div class="shell">
+      <div class="header-row">
+        <div class="brand">
+          <h1 id="page-title">Lab 2: TOC Navigation</h1>
+          <p>Learn why the last 52 bytes of the index file are enough to navigate the rest of the file.</p>
+        </div>
+        <a class="home-link" href="../../index.html">Back to all labs</a>
+      </div>
+      <div class="progress-bar" style="margin-top:16px"><div id="track-progress-fill" class="progress-fill"></div></div>
+      <div id="track-progress-copy" class="progress-copy"></div>
+      <nav id="track-nav" class="track-nav"></nav>
+    </div>
+  </header>
+
+  <main class="shell page-grid">
+    <section class="hero">
+      <div class="eyebrow">The entry point</div>
+      <h2>Why 52 bytes matter</h2>
+      <p>The reader does <strong>not</strong> start at the top and scan downward. It seeks to the end of the file, reads the fixed-size TOC, and then jumps directly to the sections it needs.</p>
+      <div class="button-row">
+        <button class="btn primary" data-action="read-toc">Read last 52 bytes</button>
+        <button class="btn ghost" data-action="jump-symbols">Jump to symbol table</button>
+        <button class="btn ghost" data-action="jump-postings-table">Jump to postings table</button>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <article class="card">
+        <h2>Example index layout</h2>
+        <p class="muted">Click any band. The highlighted band is the section you are looking at right now.</p>
+        <div id="section-stack" class="section-stack"></div>
+      </article>
+
+      <article class="card">
+        <h2>Section detail</h2>
+        <div id="toc-detail" class="detail-panel"></div>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>What you should learn here</h2>
+      <div class="checklist">
+        <div class="check-item"><strong>The TOC is always at EOF.</strong> The read is based on <code>fileSize - 52</code>, not on a fixed absolute offset.</div>
+        <div class="check-item"><strong>The TOC stores byte offsets.</strong> Those offsets act like jump targets for the rest of the file.</div>
+        <div class="check-item"><strong>The offsets can point to empty compatibility slots.</strong> Current Prometheus still reserves deprecated slots even though query lookup uses the postings offset table path.</div>
+      </div>
+    </section>
+
+    <div class="footer-nav">
+      <a id="prev-link" class="btn ghost" href="block-basics.html">Previous</a>
+      <div class="button-row">
+        <button id="page-complete" class="btn ok">Mark this page complete</button>
+        <a id="next-link" class="btn primary" href="postings-lab.html">Next</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="../../js/app.js"></script>
+  <script src="tsdb-data.js"></script>
+  <script src="tsdb-common.js"></script>
+  <script src="toc-lab.js"></script>
+</body>
+</html>

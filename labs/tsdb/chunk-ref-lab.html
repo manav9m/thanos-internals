@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TSDB Track: Chunk Refs</title>
+  <link rel="stylesheet" href="tsdb.css">
+</head>
+<body data-page="chunk">
+  <header class="site-header">
+    <div class="shell">
+      <div class="header-row">
+        <div class="brand">
+          <h1 id="page-title">Lab 5: Chunk Refs</h1>
+          <p>Learn the final jump from index metadata to the exact chunk segment file and offset.</p>
+        </div>
+        <a class="home-link" href="../../index.html">Back to all labs</a>
+      </div>
+      <div class="progress-bar" style="margin-top:16px"><div id="track-progress-fill" class="progress-fill"></div></div>
+      <div id="track-progress-copy" class="progress-copy"></div>
+      <nav id="track-nav" class="track-nav"></nav>
+    </div>
+  </header>
+
+  <main class="shell page-grid">
+    <section class="hero">
+      <div class="eyebrow">The last jump</div>
+      <h2>Decode one chunk ref</h2>
+      <p>A chunk ref is a <code>uint64</code>. The upper 32 bits store the chunk segment sequence. The lower 32 bits store the byte offset inside that segment file.</p>
+    </section>
+
+    <section class="grid-2">
+      <article class="card">
+        <h2>Decode or encode</h2>
+        <div class="decode-grid">
+          <div>
+            <label for="chunk-ref-input">Chunk ref</label>
+            <input id="chunk-ref-input" type="text">
+          </div>
+          <div>
+            <label for="chunk-file-input">Chunk file name</label>
+            <input id="chunk-file-input" type="text" value="000001">
+          </div>
+          <div>
+            <label for="chunk-offset-input">In-file offset</label>
+            <input id="chunk-offset-input" type="number" value="8" min="0" step="1">
+          </div>
+          <div class="button-row" style="align-items:end">
+            <button id="decode-ref" class="btn primary">Decode ref</button>
+            <button id="encode-ref" class="btn ghost">Encode ref</button>
+          </div>
+        </div>
+        <div id="chunk-ref-output" class="detail-panel" style="margin-top:14px"></div>
+      </article>
+
+      <article class="card">
+        <h2>Chunk file view</h2>
+        <p class="muted">The highlighted slot is the chunk selected by the current ref.</p>
+        <div id="chunk-file-track" class="chunk-track"></div>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>Remember these formulas</h2>
+      <div class="checklist">
+        <div class="check-item"><code>segment_seq = ref >> 32</code></div>
+        <div class="check-item"><code>in_file_offset = ref &amp; 0xFFFFFFFF</code></div>
+        <div class="check-item"><code>filename = fmt.Sprintf("%06d", segment_seq + 1)</code></div>
+      </div>
+    </section>
+
+    <div class="footer-nav">
+      <a id="prev-link" class="btn ghost" href="query-path-lab.html">Previous</a>
+      <div class="button-row">
+        <button id="page-complete" class="btn ok">Mark this page complete</button>
+        <a id="next-link" class="btn primary" href="index.html">Back to intro</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="../../js/app.js"></script>
+  <script src="tsdb-data.js"></script>
+  <script src="tsdb-common.js"></script>
+  <script src="chunk-ref-lab.js"></script>
+</body>
+</html>

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TSDB Track: Postings</title>
+  <link rel="stylesheet" href="tsdb.css">
+</head>
+<body data-page="postings">
+  <header class="site-header">
+    <div class="shell">
+      <div class="header-row">
+        <div class="brand">
+          <h1 id="page-title">Lab 3: Postings</h1>
+          <p>Learn how label pairs become sorted series-ID lists and why intersection is the main AND operation.</p>
+        </div>
+        <a class="home-link" href="../../index.html">Back to all labs</a>
+      </div>
+      <div class="progress-bar" style="margin-top:16px"><div id="track-progress-fill" class="progress-fill"></div></div>
+      <div id="track-progress-copy" class="progress-copy"></div>
+      <nav id="track-nav" class="track-nav"></nav>
+    </div>
+  </header>
+
+  <main class="shell page-grid">
+    <section class="hero">
+      <div class="eyebrow">Label lookup</div>
+      <h2>From label matcher to series IDs</h2>
+      <p>If a query includes <code>job="api-server"</code>, Prometheus needs a fast way to find every matching series. That fast way is a postings list: a sorted array of series IDs for one label pair.</p>
+    </section>
+
+    <section class="card">
+      <h2>Pick two postings lists and intersect them</h2>
+      <div class="picker-row">
+        <div>
+          <label for="left-posting">Left matcher</label>
+          <select id="left-posting"></select>
+        </div>
+        <div>
+          <label for="right-posting">Right matcher</label>
+          <select id="right-posting"></select>
+        </div>
+      </div>
+      <div class="grid-3" style="margin-top:14px">
+        <div id="left-posting-box" class="list-box"></div>
+        <div id="right-posting-box" class="list-box"></div>
+        <div id="intersection-box" class="list-box"></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h3>Two-pointer merge trace</h3>
+        <div id="intersection-trace" class="checklist"></div>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <article class="card">
+        <h2>Why the lists are sorted</h2>
+        <p>Sorted series IDs make intersection cheap. Prometheus can walk two arrays with two pointers instead of comparing every pair of entries.</p>
+        <div class="note">
+          <strong>Main mental model</strong>
+          <div class="hint" style="margin-top:6px">Think of postings as an inverted index: label pair -> matching series IDs.</div>
+        </div>
+      </article>
+      <article class="card">
+        <h2>Sparse cache demo</h2>
+        <div id="cache-demo"></div>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>Important rules to remember</h2>
+      <div class="checklist">
+        <div class="check-item"><strong>Equal matchers</strong> do one direct postings lookup.</div>
+        <div class="check-item"><strong>Regex matchers</strong> scan all values for that label name and union the postings for matching values.</div>
+        <div class="check-item"><strong>Negation matchers</strong> are handled as subtraction from a positive working set.</div>
+      </div>
+    </section>
+
+    <div class="footer-nav">
+      <a id="prev-link" class="btn ghost" href="toc-lab.html">Previous</a>
+      <div class="button-row">
+        <button id="page-complete" class="btn ok">Mark this page complete</button>
+        <a id="next-link" class="btn primary" href="query-path-lab.html">Next</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="../../js/app.js"></script>
+  <script src="tsdb-data.js"></script>
+  <script src="tsdb-common.js"></script>
+  <script src="postings-lab.js"></script>
+</body>
+</html>

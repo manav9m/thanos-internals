@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TSDB Track: Query Path</title>
+  <link rel="stylesheet" href="tsdb.css">
+</head>
+<body data-page="query">
+  <header class="site-header">
+    <div class="shell">
+      <div class="header-row">
+        <div class="brand">
+          <h1 id="page-title">Lab 4: Query Path</h1>
+          <p>Run one guided query end to end: TOC -> postings -> series -> chunk refs.</p>
+        </div>
+        <a class="home-link" href="../../index.html">Back to all labs</a>
+      </div>
+      <div class="progress-bar" style="margin-top:16px"><div id="track-progress-fill" class="progress-fill"></div></div>
+      <div id="track-progress-copy" class="progress-copy"></div>
+      <nav id="track-nav" class="track-nav"></nav>
+    </div>
+  </header>
+
+  <main class="shell page-grid">
+    <section class="hero">
+      <div class="eyebrow">The full path</div>
+      <h2>Scenario: <code>{job="api-server", env="prod"}</code></h2>
+      <p>This page walks one query through the exact major stages Prometheus uses. The example time window is <strong>0h 45m to 2h 15m</strong>.</p>
+      <div class="button-row">
+        <button id="run-guided-query" class="btn primary">Run guided query</button>
+        <button id="prev-step" class="btn ghost">Previous step</button>
+        <button id="next-step" class="btn ghost">Next step</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Query steps</h2>
+      <div id="query-steps" class="stepper"></div>
+    </section>
+
+    <section class="grid-2">
+      <article class="card">
+        <h2>Current step detail</h2>
+        <div id="query-step-detail" class="highlight-panel"></div>
+      </article>
+
+      <article class="card">
+        <h2>Visual focus</h2>
+        <div id="query-visual" class="section-stack"></div>
+      </article>
+    </section>
+
+    <section class="card">
+      <h2>Matching series and surviving chunks</h2>
+      <div id="query-result" class="checklist"></div>
+    </section>
+
+    <div class="footer-nav">
+      <a id="prev-link" class="btn ghost" href="postings-lab.html">Previous</a>
+      <div class="button-row">
+        <button id="page-complete" class="btn ok">Mark this page complete</button>
+        <a id="next-link" class="btn primary" href="chunk-ref-lab.html">Next</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="../../js/app.js"></script>
+  <script src="tsdb-data.js"></script>
+  <script src="tsdb-common.js"></script>
+  <script src="query-path-lab.js"></script>
+</body>
+</html>
