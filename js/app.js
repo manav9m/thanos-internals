@@ -6,8 +6,8 @@ const LABS = [
     { id: 'store', title: 'Store Gateway', description: 'Serve historical data from object storage with block indexing.', url: 'labs/store.html' },
     { id: 'compactor', title: 'Compactor', description: 'Compact, downsample, and apply retention to TSDB blocks.', url: 'labs/compactor.html' },
     { id: 'query', title: 'Query', description: 'Stateless PromQL engine, fanout, and result deduplication.', url: 'labs/query.html' },
-    { id: 'ruler', title: 'Ruler', description: 'Evaluate recording/alerting rules against Thanos Query.', url: 'labs/ruler.html' },
-    { id: 'receive', title: 'Receive', description: 'Remote Write API implementation and local buffering.', url: 'labs/receive.html' },
+    // { id: 'ruler', title: 'Ruler', description: 'Evaluate recording/alerting rules against Thanos Query.', url: 'labs/ruler.html' },
+    // { id: 'receive', title: 'Receive', description: 'Remote Write API implementation and local buffering.', url: 'labs/receive.html' },
     { id: 'downsampling', title: 'Downsampling', description: 'Detailed dive into 5m and 1h resolution creation.', url: 'labs/downsampling.html' },
     { id: 'retention', title: 'Retention & Deletion', description: 'How tombstones and retention policies are applied.', url: 'labs/retention.html' },
 ];

@@ -3,101 +3,251 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Querier Lab - Thanos Internals</title>
-    <link rel="stylesheet" href="../css/styles.css">
+    <title>Query Lab - Thanos Internals</title>
+    <link rel="stylesheet" href="query/query.css">
 </head>
 <body>
-    <header class="lab-header">
-        <div class="header-content">
-            <h1>Thanos Internals Lab</h1>
-            <p>Module: Querier (Query API)</p>
+    <header class="query-header">
+        <div class="query-shell">
+            <div class="header-row">
+                <div class="brand-copy">
+                    <div class="eyebrow">Thanos Internals</div>
+                    <h1>Query Lab</h1>
+                    <p>Learn what Thanos Querier really does: accept Prometheus-compatible HTTP queries, fan out to StoreAPI backends, optionally deduplicate HA replicas, and return either results, warnings, or an error.</p>
+                </div>
+                <div class="header-actions">
+                    <span id="completionState" class="state-pill pending">Lab pending</span>
+                    <a href="../index.html" class="nav-link">Back to Home</a>
+                </div>
+            </div>
         </div>
-        <button id="markCompleteBtn" class="btn primary-btn">Mark Lab Complete</button>
-        <a href="../index.html" class="btn secondary-btn" style="margin-left: 10px; text-decoration: none;">Back to Home</a>
     </header>
 
-    <main class="lab-container">
-        <section class="lab-sidebar">
-            <h2>Thanos Querier</h2>
-            <p>
-                The Thanos Querier implements the Prometheus HTTP v1 API. It gathers the data needed to evaluate PromQL queries from underlying StoreAPIs (like Sidecars, Store Gateways, and Rulers), evaluates the query, and returns the result. It is fully stateless and horizontally scalable.
-            </p>
-
-            <h3>Deep Internal Working</h3>
-            <p>When a user executes a PromQL query, the Querier performs the following steps:</p>
-            <ol>
-                <li><strong>Scatter:</strong> The Querier analyzes the query and concurrently fans out gRPC StoreAPI requests to all known targets (Sidecars, Store Gateways, etc.).</li>
-                <li><strong>Gather:</strong> It collects the raw time-series data from these underlying components.</li>
-                <li><strong>Deduplication:</strong> If high-availability (HA) Prometheus pairs are scraped, the Querier merges overlapping series at runtime based on configured replica labels.</li>
-                <li><strong>Evaluation:</strong> It evaluates the PromQL expression on the gathered, deduplicated data using its PromQL engine.</li>
-                <li><strong>Response:</strong> The result is formatted and returned to the client. If a target is unavailable, the <em>Partial Response Strategy</em> determines whether to abort the query or return a warning.</li>
-            </ol>
-
-            <div class="config-section">
-                <h3>Configuration Playground</h3>
-                <p>Toggle these real Thanos flags to observe how the Querier handles different scenarios.</p>
-
-                <div class="flag-control">
-                    <label>
-                        <input type="checkbox" id="flag-dedup" checked>
-                        <code>--query.replica-label="replica"</code>
-                    </label>
-                    <p class="flag-desc">Enables run-time deduplication of overlapping series from HA Prometheus groups. Merges series differing only by this label.</p>
+    <main class="query-shell">
+        <section class="hero-panel">
+            <div class="hero-copy">
+                <div class="hero-tag">Start here</div>
+                <h2>Think of Querier as the traffic controller for PromQL in a Thanos cluster.</h2>
+                <p>Grafana or another client sends one Prometheus-style query to Querier. Querier decides which backends must be contacted, asks them for the needed series through StoreAPI, optionally deduplicates HA replicas, evaluates the PromQL expression, and then returns the final answer.</p>
+                <div class="quick-start">
+                    <div class="quick-start-item"><strong>1</strong><span>Read the theory cards so the words feel familiar.</span></div>
+                    <div class="quick-start-item"><strong>2</strong><span>Pick one scenario and read its expected output.</span></div>
+                    <div class="quick-start-item"><strong>3</strong><span>Load the scenario, then click <em>Run guided query</em>.</span></div>
                 </div>
-
-                <div class="flag-control">
-                    <label>
-                        <input type="checkbox" id="flag-partial-response">
-                        <code>--query.partial-response</code>
-                    </label>
-                    <p class="flag-desc">Controls Partial Response Strategy. If true (warn), unavailable stores yield a warning. If false (abort), the query fails completely if any store is down.</p>
+                <div class="hero-actions">
+                    <a class="btn primary" href="#query-scenarios">Jump to scenarios</a>
+                    <a class="btn ghost" href="#query-playground">Jump to lab</a>
                 </div>
-
-                <div class="flag-control" style="margin-top: 15px;">
-                    <label for="flag-downsampling" style="display:block; margin-bottom: 5px;">
-                        <strong>Query Parameter:</strong> <code>max_source_resolution</code>
-                    </label>
-                    <select id="flag-downsampling" class="select-css">
-                        <option value="0s">0s (Raw Data)</option>
-                        <option value="5m">5m (Downsampled)</option>
-                        <option value="1h">1h (Downsampled)</option>
-                    </select>
-                    <p class="flag-desc" style="margin-top: 5px;">Simulates auto-downsampling. Requests data from Store Gateways using downsampled chunks for faster queries over long time ranges.</p>
+            </div>
+            <div class="hero-side">
+            <div class="hero-card">
+                    <h3>What you will learn</h3>
+                    <ul class="check-list">
+                        <li>Why Query is stateless and horizontally scalable.</li>
+                        <li>How one query fans out to multiple StoreAPI endpoints.</li>
+                        <li>When dedup changes the result and when it does nothing.</li>
+                        <li>Why <code>partial_response</code> changes warnings versus failure.</li>
+                        <li>How <code>max_source_resolution</code> changes raw versus downsampled reads.</li>
+                    </ul>
                 </div>
             </div>
         </section>
 
-        <section class="lab-main">
-            <div class="simulation-panel">
-            <div class="simulation-header">
-                <h3>Visual Simulation: Querier Fanout & Deduplication</h3>
-            </div>
-
-            <div class="simulation-canvas" id="sim-canvas">
-                <!-- SVG animations will be injected here by JS -->
-            </div>
-            </div>
-
-            <div class="controls-panel">
-                <h4>Controls & Actions</h4>
-                <div class="btn-group">
-                    <button class="btn" id="btn-query-normal">Query: Global View</button>
-                    <button class="btn" id="btn-query-ha">Query: HA Cluster</button>
-                </div>
-                <div class="btn-group" style="margin-top: 10px;">
-                    <button class="btn danger-btn" id="btn-toggle-node">Toggle Node Failure</button>
-                    <button class="btn secondary-btn" id="btn-reset">Reset Flow</button>
+        <section class="page-section">
+            <div class="section-head">
+                <div class="step-chip">1</div>
+                <div>
+                    <h2>Theory First</h2>
+                    <p>Read these basics before touching the simulator. The goal is to remove jargon first.</p>
                 </div>
             </div>
 
+            <div id="conceptGrid" class="card-grid four-up"></div>
+
+            <div class="two-col-grid top-gap">
+                <article class="panel">
+                    <h3>The request path</h3>
+                    <div id="requestPath" class="path-list"></div>
+                </article>
+
+                <article class="panel">
+                    <h3>What Querier does not do</h3>
+                    <ul class="muted-list">
+                        <li>It does not scrape targets.</li>
+                        <li>It does not store TSDB blocks itself.</li>
+                        <li>It does not compact or downsample blocks.</li>
+                        <li>It does not replace PromQL with a custom language.</li>
+                        <li>It asks backends for data and then evaluates PromQL on what comes back.</li>
+                    </ul>
+                </article>
+            </div>
+
+            <article class="panel top-gap">
+                <h3>How to use this lab</h3>
+                <div class="card-grid three-up">
+                    <div class="mini-card">
+                        <strong>First</strong>
+                        <p>Read the concept cards so words like StoreAPI, dedup, and partial response stop feeling abstract.</p>
+                    </div>
+                    <div class="mini-card">
+                        <strong>Second</strong>
+                        <p>Pick one guided scenario. Each scenario tells you what should happen before you run it.</p>
+                    </div>
+                    <div class="mini-card">
+                        <strong>Third</strong>
+                        <p>Run the guided query, then step backward and forward to connect each visible UI change with the real Query behavior.</p>
+                    </div>
+                </div>
+            </article>
         </section>
 
-        <div class="log-panel" id="log-panel" style="margin-top: 20px;">
-            <!-- Console logs will appear here -->
-        </div>
+        <section id="query-scenarios" class="page-section">
+            <div class="section-head">
+                <div class="step-chip">2</div>
+                <div>
+                    <h2>Scenario Labs</h2>
+                    <p>Start with Scenario 1. Each card tells you what to do, what should happen, and why that result is expected.</p>
+                </div>
+            </div>
+
+            <div id="scenarioGrid" class="card-grid two-up"></div>
+        </section>
+
+        <section id="query-playground" class="page-section">
+            <div class="section-head">
+                <div class="step-chip">3</div>
+                <div>
+                    <h2>Hands-On Lab</h2>
+                    <p>Load one scenario, then click Run guided query to watch store selection, fanout, dedup, partial response, and source resolution choice step by step.</p>
+                </div>
+            </div>
+
+            <div class="two-col-grid">
+                <article class="panel">
+                    <h3>Current scenario</h3>
+                    <div id="scenarioIntro" class="scenario-intro"></div>
+                    <div class="control-grid">
+                        <div>
+                            <label for="queryField">PromQL query</label>
+                            <textarea id="queryField" rows="3" readonly></textarea>
+                            <p class="hint">Scenario-driven on purpose. The lab is about Query behavior, not full query parsing.</p>
+                        </div>
+                        <div>
+                            <label for="rangeField">Time range</label>
+                            <input id="rangeField" type="text" readonly>
+                            <p class="hint">Range changes which stores and resolutions make sense.</p>
+                        </div>
+                        <div>
+                            <label class="toggle-row" for="dedupToggle">
+                                <input id="dedupToggle" type="checkbox">
+                                <span>Deduplicate replicas</span>
+                            </label>
+                            <p class="hint">Simulates the Query API <code>dedup</code> option using configured replica labels.</p>
+                        </div>
+                        <div>
+                            <label class="toggle-row" for="partialToggle">
+                                <input id="partialToggle" type="checkbox">
+                                <span>Allow partial response</span>
+                            </label>
+                            <p class="hint">When enabled, unavailable stores become warnings instead of aborting the whole query.</p>
+                        </div>
+                        <div>
+                            <label for="resolutionSelect">Max source resolution</label>
+                            <select id="resolutionSelect">
+                                <option value="0">0 (raw only)</option>
+                                <option value="5m">5m</option>
+                                <option value="1h">1h</option>
+                            </select>
+                            <p class="hint">Use 1h only in Scenario 4. It shows how Querier can prefer downsampled data on long-range queries.</p>
+                        </div>
+                        <div>
+                            <label for="storeFilterInput">Optional store filter</label>
+                            <input id="storeFilterInput" type="text" placeholder="Example: eu1|eu2">
+                            <p class="hint">Leave this empty for the normal scenarios. It only exists if you want to test how filtering changes fanout.</p>
+                        </div>
+                    </div>
+                    <div class="button-row">
+                        <button id="runScenarioBtn" class="btn primary">Run guided query</button>
+                        <button id="prevStepBtn" class="btn ghost">Previous step</button>
+                        <button id="nextStepBtn" class="btn ghost">Next step</button>
+                        <button id="resetScenarioBtn" class="btn ghost">Reset scenario</button>
+                    </div>
+                </article>
+
+                <article class="panel">
+                    <h3>What to expect</h3>
+                    <div id="expectationPanel" class="expectation-panel"></div>
+                    <div class="note-box">
+                        <strong>Accuracy boundary</strong>
+                        <p>This lab models the common Query path from official Thanos Query docs: QueryAPI request, discovered StoreAPI endpoints, concurrent selector fanout, optional dedup by replica labels, partial-response behavior, and source-resolution choice. It does not simulate distributed execution mode, Query Frontend caching, or the internal sample-by-sample differences between the <code>penalty</code> and <code>chain</code> deduplication functions.</p>
+                    </div>
+                </article>
+            </div>
+
+            <div class="two-col-grid top-gap">
+                <article class="panel">
+                    <h3>Topology view</h3>
+                    <div class="legend-row">
+                        <span class="legend-pill legend-http">HTTP query</span>
+                        <span class="legend-pill legend-grpc">StoreAPI fanout</span>
+                        <span class="legend-pill legend-ok">Healthy response</span>
+                        <span class="legend-pill legend-error">Store error</span>
+                    </div>
+                    <div id="topologyView" class="topology-view"></div>
+                </article>
+
+                <article class="panel">
+                    <h3>Guided query steps</h3>
+                    <div id="stepper" class="stepper"></div>
+                    <div id="stepDetail" class="step-detail"></div>
+                </article>
+            </div>
+
+            <div class="two-col-grid top-gap">
+                <article class="panel">
+                    <h3>Result snapshot</h3>
+                    <div id="resultPanel" class="result-panel"></div>
+                </article>
+
+                <article class="panel">
+                    <h3>Event log</h3>
+                    <div id="eventLog" class="event-log"></div>
+                </article>
+            </div>
+        </section>
+
+        <section class="page-section">
+            <div class="section-head">
+                <div class="step-chip">4</div>
+                <div>
+                    <h2>Wrap Up</h2>
+                    <p>Use this summary after you finish the scenarios.</p>
+                </div>
+            </div>
+
+            <div class="card-grid three-up">
+                <article class="mini-card">
+                    <h3>One HTTP query in</h3>
+                    <p>Querier exposes the Prometheus-compatible HTTP API. Clients do not talk to StoreAPI directly.</p>
+                </article>
+                <article class="mini-card">
+                    <h3>Many StoreAPI requests out</h3>
+                    <p>Querier discovers relevant stores and fans out selector requests concurrently to gather the needed series.</p>
+                </article>
+                <article class="mini-card">
+                    <h3>One evaluated answer back</h3>
+                    <p>After gathering data, Querier evaluates PromQL and returns results, optionally with warnings if partial responses are allowed.</p>
+                </article>
+            </div>
+
+            <div class="footer-actions">
+                <button id="markCompleteBtn" class="btn primary">Mark Lab Complete</button>
+            </div>
+        </section>
     </main>
 
     <script src="../js/app.js"></script>
-    <script src="../js/modules/query-sim.js" type="module"></script>
+    <script src="query/query-data.js"></script>
+    <script src="query/query-lab.js"></script>
 </body>
 </html>
